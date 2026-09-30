@@ -12,7 +12,9 @@ def dados_malhas(pecas, alvo_tris=9000):
     """pecas = [(nome, vertices, faces, (x, y))]: vértices em mm com origem no canto mínimo da peça; (x, y) = posição no prato.
     Reduz cada malha (só para visualizar) e devolve dados compactos, indexados, em base64."""
     objs = []
-    for nome, v, f, (x, y) in pecas:
+    for item in pecas:
+        nome, v, f, (x, y) = item[:4]
+        cor_obj = item[4] if len(item) > 4 else None
         v = np.asarray(v, np.float32)
         f = np.asarray(f, np.int32)
         if len(f) > alvo_tris:
@@ -24,16 +26,19 @@ def dados_malhas(pecas, alvo_tris=9000):
             "nome": nome, "x": float(x), "y": float(y),
             "v": base64.b64encode(np.asarray(v, np.float32).tobytes()).decode("ascii"),
             "f": base64.b64encode(np.asarray(f, np.uint32).tobytes()).decode("ascii"),
-            "nv": int(len(v)), "nf": int(len(f)),
+            "nv": int(len(v)), "nf": int(len(f)), "cor": cor_obj,
         })
     return objs
 
 
 def html_visualizador(objs, prato=None, cor="#ff8a1f", altura=520, tema="claro"):
     """HTML autônomo do visualizador. prato=(largura, profundidade) desenha a mesa da impressora (ex.: (256, 256))."""
-    dados = json.dumps({"objs": objs, "prato": prato, "cor": cor})
+    dados = json.dumps({"objs": objs, "prato": prato, "cor": cor, "escuro": tema != "claro"})
+    info_cor = "#5b6477" if tema == "claro" else "#8f99b3"
+    botao_bg = "rgba(255,255,255,.92)" if tema == "claro" else "rgba(40,44,56,.92)"
+    botao_fg = "#2b3350" if tema == "claro" else "#dfe5f5"
     botao_prato = '<button data-v="p">Prato</button>' if prato else ""
-    fundo = "linear-gradient(160deg,#f4f6ff 0%,#e9edf9 100%)" if tema == "claro" else "linear-gradient(160deg,#20243a 0%,#10131f 100%)"
+    fundo = "linear-gradient(160deg,#f4f6ff 0%,#e9edf9 100%)" if tema == "claro" else "radial-gradient(circle at 50% 35%,#242832 0%,#14161c 75%)"
     return f"""
 <div id="wrap" style="position:relative;width:100%;height:{altura}px;border-radius:18px;overflow:hidden;background:{fundo};
      box-shadow:0 6px 24px rgba(40,50,90,.15);font-family:Inter,Segoe UI,sans-serif">
@@ -42,10 +47,10 @@ def html_visualizador(objs, prato=None, cor="#ff8a1f", altura=520, tema="claro")
     <button data-v="q">3/4</button>{botao_prato}<button data-v="t">Topo</button><button data-v="f">Frente</button><button data-v="l">Lado</button>
     <button id="rot">Girar</button><button id="wire">Malha</button>
   </div>
-  <div id="info" style="position:absolute;right:14px;bottom:10px;font-size:12px;color:#5b6477"></div>
+  <div id="info" style="position:absolute;right:14px;bottom:10px;font-size:12px;color:{info_cor}"></div>
 </div>
 <style>
-  #bar button{{border:0;border-radius:10px;padding:6px 11px;background:rgba(255,255,255,.92);color:#2b3350;font-size:12.5px;
+  #bar button{{border:0;border-radius:10px;padding:6px 11px;background:{botao_bg};color:{botao_fg};font-size:12.5px;
     font-weight:600;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12)}}
   #bar button:hover{{background:#6c4dff;color:#fff}}
   #bar button.on{{background:#6c4dff;color:#fff}}
@@ -84,7 +89,7 @@ def html_visualizador(objs, prato=None, cor="#ff8a1f", altura=520, tema="claro")
     g.setAttribute('position', new THREE.BufferAttribute(dec(o.v, Float32Array), 3));
     g.setIndex(new THREE.BufferAttribute(dec(o.f, Uint32Array), 1));
     g.computeVertexNormals();
-    const m = new THREE.MeshStandardMaterial({{color: D.cor, roughness: 0.42, metalness: 0.04}});
+    const m = new THREE.MeshStandardMaterial({{color: o.cor || D.cor, roughness: 0.42, metalness: 0.04}});
     mats.push(m);
     const mesh = new THREE.Mesh(g, m);
     mesh.position.set(o.x, o.y, 0);
@@ -99,21 +104,21 @@ def html_visualizador(objs, prato=None, cor="#ff8a1f", altura=520, tema="claro")
   let cx, cy;
   if (D.prato) {{
     const pw = D.prato[0], pd = D.prato[1];
-    const bed = new THREE.Mesh(new THREE.PlaneGeometry(pw, pd), new THREE.MeshStandardMaterial({{color: 0xdfe4f2, roughness: 0.9}}));
+    const bed = new THREE.Mesh(new THREE.PlaneGeometry(pw, pd), new THREE.MeshStandardMaterial({{color: D.escuro ? 0x2b2f3a : 0xdfe4f2, roughness: 0.9}}));
     bed.position.set(pw / 2, pd / 2, -0.05); scene.add(bed);
-    const grid = new THREE.GridHelper(Math.max(pw, pd), 16, 0x8d97b8, 0xbcc4dc);
+    const grid = new THREE.GridHelper(Math.max(pw, pd), 16, D.escuro ? 0x5a6378 : 0x8d97b8, D.escuro ? 0x3d4456 : 0xbcc4dc);
     grid.rotation.x = Math.PI / 2; grid.position.set(pw / 2, pd / 2, 0); scene.add(grid);
     cx = pw / 2; cy = pd / 2;
   }} else {{
     const s = Math.max(maxP.x - minP.x, maxP.y - minP.y) * 2.2 + 20;
-    const grid = new THREE.GridHelper(s, 20, 0x8d97b8, 0xc7cee4);
+    const grid = new THREE.GridHelper(s, 20, D.escuro ? 0x5a6378 : 0x8d97b8, D.escuro ? 0x3d4456 : 0xc7cee4);
     grid.rotation.x = Math.PI / 2; grid.position.set((minP.x + maxP.x) / 2, (minP.y + maxP.y) / 2, -0.02); scene.add(grid);
     cx = (minP.x + maxP.x) / 2; cy = (minP.y + maxP.y) / 2;
   }}
   const centroP = new THREE.Vector3((minP.x + maxP.x) / 2, (minP.y + maxP.y) / 2, (minP.z + maxP.z) / 2);
   const target = centroP.clone();
-  let span = Math.max(maxP.x - minP.x, maxP.y - minP.y, maxP.z - minP.z) * 1.0 + 10;
-  if (D.prato) span = Math.max(span, 70);
+  let span = Math.max(maxP.x - minP.x, maxP.y - minP.y, maxP.z - minP.z) * 1.35 + 18;
+  if (D.prato) span = Math.max(span, 110);
   const spanPrato = D.prato ? Math.max(D.prato[0], D.prato[1]) * 0.95 : span;
   const centroPrato = D.prato ? new THREE.Vector3(cx, cy, 0) : centroP;
 

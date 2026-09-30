@@ -39,6 +39,9 @@ ap.add_argument("--borda", type=float, default=1.6, help="vazada: espessura da p
 ap.add_argument("--fundo", type=float, default=1.0, help="vazada: espessura do fundo, mm (0 = vazada de lado a lado)")
 ap.add_argument("--altura-borda", type=float, default=4.0, help="base: altura do degrau da borda, mm")
 ap.add_argument("--manter-caixa", action="store_true", help="não converte o nome para maiúsculas")
+ap.add_argument("--modo", choices=["uniforme", "zigzag", "cores"], default="uniforme", help="uniforme · zigzag (alturas alternadas) · cores (alterna cor por letra, 2 partes p/ AMS)")
+ap.add_argument("--zigzag", type=float, default=1.2, help="zigzag: quanto as letras sobem/descem, mm")
+ap.add_argument("--parede-base", type=float, default=1.0, help="posição vertical do furo: parede entre o furo e a base, mm")
 ap.add_argument("--qualidade", choices=["rascunho", "normal", "alta"], default="normal")
 ap.add_argument("--base-arredondada", action="store_true")
 ap.add_argument("--refazer", action="store_true", help="ignora o cache de STL")
@@ -57,7 +60,7 @@ if a.espessura is None:
     a.espessura = _esp
 vox = {"rascunho": 0.20, "normal": 0.10, "alta": 0.06}[a.qualidade]
 base = core.Params(fonte=core.resolver_fonte(a.fonte), altura=a.altura, espessura=a.espessura, raio=a.raio,
-                   engrossar=a.engrossar, espaco=a.espaco, furo=a.furo if a.furo is not None else dict(core.FORMATOS_FURO.values())[a.furo_formato], furo_formato=a.furo_formato, furo_folga=a.furo_folga, furo_rot=a.furo_rot, furo_canto=a.furo_canto, estilo=a.estilo, borda=a.borda, fundo=a.fundo, altura_borda=a.altura_borda, maiusculas=not a.manter_caixa, largura=a.largura, ponte=a.ponte, base_arredondada=a.base_arredondada, voxel=vox)
+                   engrossar=a.engrossar, espaco=a.espaco, furo=a.furo if a.furo is not None else dict(core.FORMATOS_FURO.values())[a.furo_formato], furo_formato=a.furo_formato, furo_folga=a.furo_folga, furo_rot=a.furo_rot, furo_canto=a.furo_canto, modo=a.modo, zigzag=a.zigzag, parede_base=a.parede_base, estilo=a.estilo, borda=a.borda, fundo=a.fundo, altura_borda=a.altura_borda, maiusculas=not a.manter_caixa, largura=a.largura, ponte=a.ponte, base_arredondada=a.base_arredondada, voxel=vox)
 itens = []
 if a.nomes:
     for parte in a.nomes.split(","):

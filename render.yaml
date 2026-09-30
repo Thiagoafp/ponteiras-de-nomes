@@ -5,7 +5,7 @@ services:
     runtime: python
     plan: starter            # 512 MB. Nomes longos em qualidade "Alta" pedem mais memória: use "standard" (2 GB) se faltar.
     buildCommand: pip install -r requirements.txt
-    startCommand: streamlit run app_web.py --server.port $PORT --server.address 0.0.0.0
+    startCommand: streamlit run app_studio.py --server.port $PORT --server.address 0.0.0.0
     healthCheckPath: /_stcore/health
     envVars:
       - key: PYTHON_VERSION

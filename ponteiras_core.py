@@ -51,6 +51,8 @@ class Params:
     fundo: float = 1.0          # vazada: espessura do fundo (0 = vazada de lado a lado)
     altura_borda: float = 4.0   # base: altura do degrau da borda (mm)
     maiusculas: bool = True     # converte o nome para MAIÚSCULAS (o furo exige letras altas)
+    modo: str = "uniforme"      # uniforme | zigzag (letras com alturas alternadas) | cores (cada letra alterna cor A/B para o AMS)
+    zigzag: float = 1.0         # modo zigzag: quanto as letras pares sobem e as ímpares descem (mm)
     largura: float = 0.72       # 1.0 = largura normal da fonte; <1 comprime as letras (o original é condensado)
     ponte: float = 2.4          # largura das pontes que ligam letras/acentos soltos (mm)
     base_arredondada: bool = False
@@ -267,9 +269,15 @@ def _tem_glifo(font, ch):
 
 
 def mascara(texto, p):
-    """Retorna (máscara 2D [linhas de cima p/ baixo], yc_mm = centro da faixa das maiúsculas medido a partir de baixo).
-    Caracteres que a fonte não tem (corações, flores, emojis...) vêm de uma fonte de reserva; ':nome:' insere uma imagem
-    importada. Símbolos e imagens ficam na altura das maiúsculas."""
+    """Retorna (máscara 2D [linhas de cima p/ baixo], yc_mm = centro da faixa das maiúsculas medido a partir de baixo)."""
+    m, yc, _ = mascara_rotulada(texto, p)
+    return m, yc
+
+
+def mascara_rotulada(texto, p):
+    """Como mascara(), mas devolve também, para cada coluna da máscara, o índice da letra/símbolo a que ela pertence
+    (usado no modo 'cores', que alterna a cor por letra). Modo 'zigzag': letras pares mais altas e ímpares mais baixas.
+    Caracteres que a fonte não tem (corações, flores...) vêm de uma fonte de reserva; ':nome:' insere uma imagem importada."""
     res = p.voxel
     f0 = ImageFont.truetype(p.fonte, 200)
     bb = f0.getbbox("H")
@@ -281,16 +289,29 @@ def mascara(texto, p):
     pad = int(6 / res)
     bh = f.getbbox("H")
     cap_top0 = bh[1]
-    x, itens = 0.0, []          # itens: ("ch", x, ch, fonte, dx, dy) | ("img", x, mascara, dy)
+    zig = p.modo == "zigzag" and p.zigzag > 0
+    fontes_zz = {}
+
+    def fonte_zz(sinal):
+        if sinal not in fontes_zz:
+            esc = max(0.5, 1 + sinal * p.zigzag / max(p.altura, 1.0))
+            ft = ImageFont.truetype(p.fonte, max(8, int(round(size * esc))))
+            fontes_zz[sinal] = (ft, ft.getbbox("H"))
+        return fontes_zz[sinal]
+
+    x, itens, inicios = 0.0, [], []     # itens: ("ch", x, ch, fonte, dx, dy) | ("img", x, mascara, dy); inicios: x de cada letra visível
+    n_vis = 0
     for tipo, val in _elementos(texto, listar_imagens()):
         if tipo == "img":
             mi = _mascara_imagem(val, int(round(cap_h * 1.1)))
             dy = cap_top0 + (cap_h - mi.shape[0]) / 2
             itens.append(("img", x, mi, dy))
+            inicios.append(x)
+            n_vis += 1
             x += mi.shape[1] + 0.12 * size + track
             continue
         ch = val
-        usar, dx, dy = f, 0.0, 0.0
+        usar, dx, dy, simbolo = f, 0.0, 0.0, False
         if not _tem_glifo(f, ch) and not ch.isspace():
             for r in reservas:
                 if _tem_glifo(r, ch):
@@ -300,9 +321,16 @@ def mascara(texto, p):
                     l, t, rr, bt = usar.getbbox(ch)
                     dx = -l
                     dy = cap_top0 + (cap_h - (bt - t)) / 2 - t          # centraliza o símbolo na faixa das maiúsculas
+                    simbolo = True
                     break
-        adv = usar.getlength(ch) if usar is f else (usar.getbbox(ch)[2] - usar.getbbox(ch)[0]) + 0.12 * size
+        elif zig and not ch.isspace():
+            usar, bz = fonte_zz(1 if n_vis % 2 == 0 else -1)
+            dy = (cap_top0 + cap_h / 2) - (bz[1] + (bz[3] - bz[1]) / 2)    # mantém o centro das maiúsculas alinhado
+        adv = (usar.getbbox(ch)[2] - usar.getbbox(ch)[0]) + 0.12 * size if simbolo else usar.getlength(ch)
         itens.append(("ch", x, ch, usar, dx, dy))
+        if not ch.isspace():
+            inicios.append(x)
+            n_vis += 1
         x += adv + track
     img = Image.new("L", (int(x) + 2 * pad + int(size), int(size * 2) + 2 * pad), 0)
     d = ImageDraw.Draw(img)
@@ -313,8 +341,11 @@ def mascara(texto, p):
         else:
             _, gx, ch, fnt, dx, dy = it
             d.text((pad + gx + dx, pad + dy), ch, font=fnt, fill=255)
+    k = 1.0
     if abs(p.largura - 1.0) > 1e-3:
+        w0 = img.width
         img = img.resize((max(8, int(img.width * p.largura)), img.height), Image.LANCZOS)
+        k = img.width / w0
     cap_top, cap_bot = pad + bh[1], pad + bh[3]
     m = np.asarray(img) > 127
     m = ndi.gaussian_filter(m.astype(float), 1.2) > 0.5
@@ -329,7 +360,10 @@ def mascara(texto, p):
     m = m[y0:y1, x0:x1]
     centro_linha = (cap_top + cap_bot) / 2 - y0            # linhas a partir do topo
     yc = (m.shape[0] - centro_linha) * res
-    return m, yc
+    starts = np.array([(pad + g) * k for g in inicios]) - x0
+    cols = np.arange(m.shape[1])
+    rot = np.clip(np.searchsorted(starts, cols, side="right") - 1, 0, None) if len(starts) else np.zeros(len(cols), int)
+    return m, yc, rot
 
 
 def _ligar(m, p):
@@ -443,7 +477,7 @@ def furo_centro_z(p):
     return p.parede_base - furo_limites(p)[2]
 
 
-def ocupacao(m, yc, p):
+def ocupacao(m, yc, p, rot=None):
     """Volume (x, y, z) das letras (fundidas numa peça) com o furo do lápis atravessando o nome inteiro (eixo X).
     Estilos: fechada (sólida) · vazada (só o contorno, com fundo opcional) · base (borda em degrau em volta das letras)."""
     res = p.voxel
@@ -453,6 +487,8 @@ def ocupacao(m, yc, p):
         pad = int(np.ceil(p.borda / res)) + 3           # a borda em volta precisa de espaço ao redor da máscara
         m = np.pad(m, pad)
         yc = yc + pad * res
+        if rot is not None:
+            rot = np.pad(rot, pad, mode="edge")
     if p.estilo == "vazada":
         parede = max(p.borda, 3 * res)
         dist = ndi.distance_transform_edt(m) * res
@@ -487,7 +523,7 @@ def ocupacao(m, yc, p):
             f"Aumente a altura da letra / a espessura ou diminua o furo.")
     fm = furo_mascara(p, (y - yc)[:, None], (z - zc)[None, :])   # (y, z)
     occ &= ~fm[None, :, :]                                  # furo passante (eixo X), aberto nas duas pontas
-    return occ
+    return (occ, rot) if rot is not None else occ
 
 
 def previa(texto, p, largura=760):
@@ -637,7 +673,7 @@ def seguro(n):
 
 
 def chave(nome, p):
-    h = hashlib.md5(repr((p.fonte, p.altura, p.espessura, p.raio, p.engrossar, p.espaco, p.base_arredondada, p.voxel, p.furo, p.furo_formato, p.furo_folga, p.furo_rot, p.furo_canto, p.parede_base, p.largura, p.ponte, p.estilo, p.borda, p.fundo, p.altura_borda, nome, _assinatura_imagens(nome), 6)).encode()).hexdigest()[:6]
+    h = hashlib.md5(repr((p.fonte, p.altura, p.espessura, p.raio, p.engrossar, p.espaco, p.base_arredondada, p.voxel, p.furo, p.furo_formato, p.furo_folga, p.furo_rot, p.furo_canto, p.parede_base, p.largura, p.ponte, p.estilo, p.borda, p.fundo, p.altura_borda, p.modo, p.zigzag, nome, _assinatura_imagens(nome), 7)).encode()).hexdigest()[:6]
     return f"{seguro(nome)}_{h}"
 
 
@@ -659,6 +695,20 @@ def gerar_stls(nomes_params, saida, log=print, refazer=False):
             log(f"  {nome}: já gerado (cache)")
             continue
         log(f"  {nome}: desenhando letras...")
+        if p.modo == "cores":                       # duas cores alternadas por letra: STL da união + parte A + parte B
+            m, yc, rot = mascara_rotulada(nome, p)
+            occ, rotf = ocupacao(m, yc, p, rot)
+            v, fc = malha_skimage(occ, p.voxel)
+            gravar_stl(os.path.join(stl, k + ".stl"), v, fc)
+            par = (rotf % 2) == 0
+            for suf, sel in (("_A", par), ("_B", ~par)):
+                oc = occ & sel[:, None, None]
+                if oc.any():
+                    v2, f2 = malha_skimage(oc, p.voxel)
+                    gravar_stl(os.path.join(stl, k + suf + ".stl"), v2, f2)
+            log(f"  OK {nome}: 2 cores, {len(fc)} triângulos")
+            del occ, m
+            continue
         m, yc = mascara(nome, p)
         occ = ocupacao(m, yc, p)
         if MESHER == "skimage":
@@ -727,44 +777,53 @@ NS = ('xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" '
       'xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p"')
 
 
-def escrever_3mf(arq, itens, geo, rotulo):
-    """itens: [(chave,x,y)]; rotulo[chave]=nome de exibição."""
+def escrever_3mf(arq, itens, geo, rotulo, partes=None):
+    """itens: [(chave,x,y)]; rotulo[chave]=nome de exibição. partes[chave] = [(v, f, extrusor)] para peças de várias cores
+    (um objeto com várias partes, cada uma no seu filamento)."""
+    partes = partes or {}
     zf = zipfile.ZipFile(arq, "w", zipfile.ZIP_DEFLATED)
     zf.writestr("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>\n <Default Extension="png" ContentType="image/png"/>\n <Default Extension="gcode" ContentType="text/x.gcode"/>\n</Types>')
     zf.writestr("_rels/.rels", '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n</Relationships>')
     chaves = sorted({k for k, _, _ in itens})
-    mid, rels = {}, []
-    for i, k in enumerate(chaves, 1):
-        v, f, _ = geo[k]
-        mid[k] = i
-        x = ['<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" %s>\n <metadata name="BambuStudio:3mfVersion">1</metadata>\n <resources>\n  <object id="%d" p:UUID="%08x-81cb-4c03-9d28-80fed5dfa1dc" type="model">\n   <mesh>\n    <vertices>' % (NS, i, 0x10000 + i)]
-        x += ['     <vertex x="%.5g" y="%.5g" z="%.5g"/>' % tuple(r) for r in v] + ["    </vertices>\n    <triangles>"]
-        x += ['     <triangle v1="%d" v2="%d" v3="%d"/>' % tuple(r) for r in f] + ["    </triangles>\n   </mesh>\n  </object>\n </resources>\n <build/>\n</model>"]
-        zf.writestr("3D/Objects/object_%d.model" % i, "\n".join(x))
-        rels.append(' <Relationship Target="/3D/Objects/object_%d.model" Id="rel-%d" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>' % (i, i))
+    objs, rels, cont = {}, [], 0          # objs[k] = [(id_do_objeto, n_faces, extrusor)]
+    for k in chaves:
+        lista = partes[k] if k in partes else [(geo[k][0], geo[k][1], 1)]
+        objs[k] = []
+        for v, f, ext in lista:
+            cont += 1
+            x = ['<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" %s>\n <metadata name="BambuStudio:3mfVersion">1</metadata>\n <resources>\n  <object id="%d" p:UUID="%08x-81cb-4c03-9d28-80fed5dfa1dc" type="model">\n   <mesh>\n    <vertices>' % (NS, cont, 0x10000 + cont)]
+            x += ['     <vertex x="%.5g" y="%.5g" z="%.5g"/>' % tuple(r) for r in v] + ["    </vertices>\n    <triangles>"]
+            x += ['     <triangle v1="%d" v2="%d" v3="%d"/>' % tuple(r) for r in f] + ["    </triangles>\n   </mesh>\n  </object>\n </resources>\n <build/>\n</model>"]
+            zf.writestr("3D/Objects/object_%d.model" % cont, "\n".join(x))
+            rels.append(' <Relationship Target="/3D/Objects/object_%d.model" Id="rel-%d" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>' % (cont, cont))
+            objs[k].append((cont, len(f), ext))
     zf.writestr("3D/_rels/3dmodel.model.rels", '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n' + "\n".join(rels) + "\n</Relationships>")
-    base = len(chaves)
+    base = cont
     res, build, objcfg, inst = [], [], [], []
     for n, (k, x, y) in enumerate(itens):
         oid = base + 1 + n
         nm = escape(rotulo[k])
-        nf = len(geo[k][1])
-        res.append(f'  <object id="{oid}" p:UUID="{0x100 + n:08x}-61cb-4c03-9d28-80fed5dfa1dc" type="model">\n   <components>\n    <component p:path="/3D/Objects/object_{mid[k]}.model" objectid="{mid[k]}" p:UUID="{0x200 + n:08x}-b206-40ff-9872-83e8017abed1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>\n   </components>\n  </object>')
+        comps = "\n".join(
+            f'    <component p:path="/3D/Objects/object_{cid}.model" objectid="{cid}" p:UUID="{0x200 + n * 8 + j:08x}-b206-40ff-9872-83e8017abed1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>'
+            for j, (cid, _, _) in enumerate(objs[k]))
+        res.append(f'  <object id="{oid}" p:UUID="{0x100 + n:08x}-61cb-4c03-9d28-80fed5dfa1dc" type="model">\n   <components>\n{comps}\n   </components>\n  </object>')
         build.append(f'  <item objectid="{oid}" p:UUID="{0x300 + n:08x}-b1ec-4553-aec9-835e5b724bb4" transform="1 0 0 0 1 0 0 0 1 {x:.4f} {y:.4f} 0" printable="1"/>')
-        objcfg.append(f'''  <object id="{oid}">
-    <metadata key="name" value="{nm}"/>
-    <metadata key="extruder" value="1"/>
-    <metadata face_count="{nf}"/>
-    <part id="{mid[k]}" subtype="normal_part">
-      <metadata key="name" value="{nm}"/>
+        pts = "\n".join(f'''    <part id="{cid}" subtype="normal_part">
+      <metadata key="name" value="{nm}{'' if len(objs[k]) == 1 else ' - cor ' + 'AB'[j % 2]}"/>
       <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>
       <metadata key="source_object_id" value="0"/>
-      <metadata key="source_volume_id" value="0"/>
+      <metadata key="source_volume_id" value="{j}"/>
       <metadata key="source_offset_x" value="0"/>
       <metadata key="source_offset_y" value="0"/>
       <metadata key="source_offset_z" value="0"/>
+      <metadata key="extruder" value="{ext}"/>
       <mesh_stat face_count="{nf}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>
-    </part>
+    </part>''' for j, (cid, nf, ext) in enumerate(objs[k]))
+        objcfg.append(f'''  <object id="{oid}">
+    <metadata key="name" value="{nm}"/>
+    <metadata key="extruder" value="1"/>
+    <metadata face_count="{sum(nf for _, nf, _ in objs[k])}"/>
+{pts}
   </object>''')
         inst.append(f'    <model_instance>\n      <metadata key="object_id" value="{oid}"/>\n      <metadata key="instance_id" value="0"/>\n      <metadata key="identify_id" value="{1000 + n}"/>\n    </model_instance>')
     main = f'''<?xml version="1.0" encoding="UTF-8"?>
@@ -821,24 +880,34 @@ def gerar_tudo(itens, saida, log=print, refazer=False, pasta_pedido=None, detalh
     itens = [(n, q, p) for n, q, p, _ in norm]
     log(f"{len(unicos)} nome(s) diferente(s), {sum(q for _, q, _ in itens)} peça(s) no total")
     stl = gerar_stls(list(unicos.values()), saida, log, refazer)
-    geo, rotulo = {}, {}
+    geo, rotulo, partes = {}, {}, {}
     for k, (n, p) in unicos.items():
         v, f = ler_stl(os.path.join(stl, k + ".stl"))
-        v = v - v.min(0)
+        mn = v.min(0)
+        v = v - mn
         geo[k] = (v, f, v.max(0))
         rotulo[k] = rotulos[k]
+        if p.modo == "cores":                       # partes A e B no mesmo referencial (mesma origem da peça inteira)
+            lst = []
+            for suf, ext in (("_A", 1), ("_B", 2)):
+                arq_p = os.path.join(stl, k + suf + ".stl")
+                if os.path.exists(arq_p):
+                    vp, fp = ler_stl(arq_p)
+                    lst.append((vp - mn, fp, ext))
+            if len(lst) == 2:
+                partes[k] = lst
     pecas = []
     for n, q, p in itens:
         pecas += [chave(n, p)] * q
     pratos = empacotar(pecas, geo)
     if detalhes is not None:
-        detalhes.update({"pratos": pratos, "geo": geo, "rotulo": rotulo, "stl": stl})
+        detalhes.update({"pratos": pratos, "geo": geo, "rotulo": rotulo, "stl": stl, "partes": partes})
     arqs = []
     destino = pasta_pedido or saida
     os.makedirs(destino, exist_ok=True)
     for i, pr in enumerate(pratos, 1):
         arq = os.path.join(destino, f"Ponteiras_prato_{i}.3mf")
-        escrever_3mf(arq, pr, geo, rotulo)
+        escrever_3mf(arq, pr, geo, rotulo, partes)
         arqs.append(arq)
         log(f"prato {i}: {len(pr)} peça(s) -> {arq}")
     return arqs
@@ -1004,3 +1073,24 @@ def malha_rapida(texto, p, voxel=0.2, alvo=15000):
     occ = ocupacao(m, yc, q)
     v, f = malha_skimage(occ, q.voxel, alvo)
     return v - v.min(0), f
+
+
+def partes_rapidas(texto, p, voxel=0.2, alvo=15000):
+    """Malha rápida para a prévia 3D, separada por cor quando o modo é 'cores'.
+    Retorna [(vertices, faces, indice_da_cor)] no mesmo referencial (origem no canto mínimo da peça inteira)."""
+    q = replace(p, voxel=max(p.voxel, voxel))
+    if q.modo != "cores":
+        v, f = malha_rapida(texto, q, voxel, alvo)
+        return [(v, f, 0)]
+    m, yc, rot = mascara_rotulada(texto, q)
+    occ, rotf = ocupacao(m, yc, q, rot)
+    vu, fu = malha_skimage(occ, q.voxel, alvo)
+    mn = vu.min(0)
+    par = (rotf % 2) == 0
+    out = []
+    for i, sel in enumerate((par, ~par)):
+        oc = occ & sel[:, None, None]
+        if oc.any():
+            v2, f2 = malha_skimage(oc, q.voxel, alvo // 2)
+            out.append((v2 - mn, f2, i))
+    return out

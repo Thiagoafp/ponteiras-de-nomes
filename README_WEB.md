@@ -1,5 +1,7 @@
 # Ponteiras de Nomes — versão web (Streamlit)
 
+**Duas interfaces:** `app_studio.py` (padrão; visual escuro no estilo do MakerLab: painel *Personalizar* à esquerda e mesa 3D grande à direita; modos Uniforme · Zig-zag · Cores alternadas) e `app_web.py` (versão clássica em abas, claro, com símbolos, troca de letras, galeria de fontes e histórico). Para abrir a clássica: `Abrir_Web_Classico.bat`.
+
 Mesma ferramenta da versão desktop, no navegador: visual moderno, **prévia 3D interativa** (gira e aproxima), tabela de nomes,
 galeria de fontes, símbolos/imagens, gabarito de furo e download dos pratos 3MF (perfil P1S + PLA + Textured PEI).
 No servidor não precisa de Blender: a malha é gerada por *marching cubes* (scikit-image).
@@ -8,7 +10,7 @@ No servidor não precisa de Blender: a malha é gerada por *marching cubes* (sci
 ```
 cd ponteira_nomes
 pip install -r requirements.txt
-streamlit run app_web.py
+streamlit run app_studio.py
 ```
 Abre em http://localhost:8501. (Testado aqui: abas, prévia 2D e 3D, geração do pedido e vista 3D do prato.)
 
@@ -21,7 +23,7 @@ Abre em http://localhost:8501. (Testado aqui: abas, prévia 2D e 3D, geração d
 **Render**
 1. Em render.com: *New > Blueprint* e escolha o repositório (usa o `render.yaml`), ou *New > Web Service* com:
    - Build: `pip install -r requirements.txt`
-   - Start: `streamlit run app_web.py --server.port $PORT --server.address 0.0.0.0`
+   - Start: `streamlit run app_studio.py --server.port $PORT --server.address 0.0.0.0`
 2. Em *Environment*, defina (todas opcionais, mas recomendadas):
    - `APP_PASSWORD` = senha de acesso ao app (sem ela, qualquer pessoa com o link usa o app)
    - `SUPABASE_URL` e `SUPABASE_KEY` (veja abaixo)
