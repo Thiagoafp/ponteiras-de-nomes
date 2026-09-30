@@ -1,0 +1,20 @@
+# Blueprint do Render (Infrastructure as Code). No painel do Render: New > Blueprint > escolha este repositório.
+services:
+  - type: web
+    name: ponteiras-de-nomes
+    runtime: python
+    plan: starter            # 512 MB. Nomes longos em qualidade "Alta" pedem mais memória: use "standard" (2 GB) se faltar.
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app_web.py --server.port $PORT --server.address 0.0.0.0
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.3
+      - key: PONTEIRAS_MESHER
+        value: skimage
+      - key: SUPABASE_URL
+        sync: false          # preencha no painel (opcional)
+      - key: SUPABASE_KEY
+        sync: false          # chave service_role (opcional)
+      - key: APP_PASSWORD
+        sync: false          # senha de acesso (opcional, recomendado)

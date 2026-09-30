@@ -1,0 +1,12 @@
+# arquivos gerados / locais
+saida/
+teste*/
+__pycache__/
+*.pyc
+config_gui.json
+ponteira_nomes.blend
+ponteira_nomes.blend1
+.streamlit/secrets.toml
+.env
+# fontes e imagens importadas por você (opcional versionar)
+fontes/importadas/
