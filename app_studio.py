@@ -31,6 +31,7 @@ PADRAO = "(padrão)"
 NENHUM = "(nenhum)"
 ESTILOS = {"Fechada": "fechada", "Vazada (contorno)": "vazada", "Com borda em degrau": "base"}
 MODOS = {"Uniforme": "uniforme", "Zig-zag": "zigzag", "Cores alternadas": "cores"}
+CAIXAS = {"MAIÚSCULAS": "maiusculas", "minúsculas": "minusculas", "Primeira Maiúscula": "capitalizar", "Como digitado": "digitado"}
 SAIDA = os.path.join(core.HERE, "saida")
 
 CSS = """
@@ -102,7 +103,7 @@ ROTULOS_ENFEITE = [r for r, _ in OPCOES_ENFEITE]
 DEF = {
     "fonte": next((k for k in FONTES if k.lower().startswith(("lilita", "arial rounded", "poppins extra"))), next(iter(FONTES))),
     "altura": 11.5, "espessura": 10.9, "raio": 2.2, "engrossar": 0.45, "largura": 0.72, "espaco": -0.6, "ponte": 2.4,
-    "maiusculas": True, "modo": "Uniforme", "zigzag": 1.2, "estilo": "Fechada", "borda": 1.6, "fundo": 1.0, "altura_borda": 4.0,
+    "caixa": "MAIÚSCULAS", "modo": "Uniforme", "zigzag": 1.2, "estilo": "Fechada", "borda": 1.6, "fundo": 1.0, "altura_borda": 4.0,
     "tipo_lapis": list(core.PRESETS_LAPIS)[0], "furo_formato": "Circular", "furo": 8.0, "furo_folga": 0.0, "furo_rot": 0.0,
     "furo_canto": 1.2, "parede_base": 1.0, "qualidade": "Normal", "enf_antes": NENHUM, "enf_depois": NENHUM,
     "cor_a": "#2fd17b", "cor_b": "#ff8a1f", "opcoes_por_nome": False,
@@ -141,7 +142,7 @@ def params_de(fonte_nome=None, furo_nome=None):
     return core.Params(
         fonte=FONTES.get(fn) or core.resolver_fonte(fn), altura=float(s["altura"]), espessura=float(s["espessura"]), raio=float(s["raio"]),
         engrossar=float(s["engrossar"]), espaco=float(s["espaco"]), largura=float(s["largura"]), ponte=float(s["ponte"]),
-        maiusculas=bool(s["maiusculas"]), modo=MODOS[s["modo"]], zigzag=float(s["zigzag"]), estilo=ESTILOS[s["estilo"]],
+        caixa=CAIXAS[s["caixa"]], modo=MODOS[s["modo"]], zigzag=float(s["zigzag"]), estilo=ESTILOS[s["estilo"]],
         borda=float(s["borda"]), fundo=float(s["fundo"]), altura_borda=float(s["altura_borda"]), parede_base=float(s["parede_base"]),
         furo_formato=core.FORMATOS_FURO[fmt_nome][0],
         furo=(core.FORMATOS_FURO[furo_nome][1] if furo_nome in core.FORMATOS_FURO else float(s["furo"])),
@@ -155,9 +156,7 @@ def token(rotulo, chave_global):
 
 
 def texto_de(l):
-    nome = str(l["Nome"]).strip()
-    if st.session_state["maiusculas"]:
-        nome = nome.upper()
+    nome = core.aplicar_caixa(str(l["Nome"]).strip(), core.Params(caixa=CAIXAS[st.session_state["caixa"]]))
     return core.compor_nome(nome, token(l["Antes"], "enf_antes"), token(l["Depois"], "enf_depois"))
 
 
@@ -212,6 +211,169 @@ def partes_prev(texto, pjson):
     return dim, objs
 
 
+
+def icone_simbolo(glifo, tam=44):
+    """Imagem do símbolo (coração, flor...) desenhada com a fonte de reserva que o tiver."""
+    im = Image.new("RGB", (tam, tam), (28, 31, 39))
+    for c in core._fontes_reserva():
+        ft = core._fonte_reserva(c, int(tam * 0.75))
+        if core._tem_glifo(ft, glifo):
+            bb = ft.getbbox(glifo)
+            ImageDraw.Draw(im).text(((tam - (bb[2] - bb[0])) / 2 - bb[0], (tam - (bb[3] - bb[1])) / 2 - bb[1]), glifo, font=ft, fill=(236, 240, 250))
+            break
+    return im
+
+
+@st.dialog("Escolher fonte", width="large")
+def dialogo_fonte():
+    st.caption("Cada fonte aparece escrita no próprio estilo. Clique em uma linha para usar. "
+               "No servidor não existem as fontes do Windows (Arial, Times...): há equivalentes abertos e você pode importar as suas (.ttf/.otf).")
+    c1, c2 = st.columns([2, 1])
+    busca = c1.text_input("Buscar", placeholder="ex.: lobster, pixel, bold, script...", key="f_busca")
+    grupo = c2.selectbox("Grupo", ["Todos"] + [t for t, _ in GRUPOS], key="f_grupo")
+    nomes = [n for t, ns in GRUPOS if grupo in ("Todos", t) for n in ns if busca.lower() in n.lower()]
+    total = len(nomes)
+    nomes = nomes[:150]
+    df = pd.DataFrame({"Amostra": [amostra_uri(FONTES[n], n, 34) for n in nomes], "Fonte": nomes,
+                       "Grupo": [ROTULO_GRUPO.get(n, "Padrão") for n in nomes]})
+    ev = st.dataframe(df, hide_index=True, width="stretch", height=440, row_height=52, on_select="rerun", selection_mode="single-row",
+                      key=f"f_tab_{st.session_state.get('f_n', 0)}", column_config={"Amostra": st.column_config.ImageColumn("Amostra", width="large")})
+    st.caption(f"{total} fonte(s)" + (" (mostrando 150; refine a busca)" if total > 150 else ""))
+    if ev.selection.rows:
+        st.session_state["fonte"] = nomes[ev.selection.rows[0]]
+        st.rerun()
+
+
+def _cb_add_token(tok):
+    st.session_state["mont_nome"] = st.session_state.get("mont_nome", "") + tok
+
+
+def _cb_trocar():
+    qual = {"Todas": "todas", "Primeira": "primeira", "Última": "ultima"}[st.session_state["tr_qual"]]
+    st.session_state["mont_nome"] = core.trocar_letra(st.session_state["mont_nome"], st.session_state["tr_letra"],
+                                                      ENF[st.session_state["tr_por"]], qual)
+
+
+@st.dialog("Símbolos, imagens e troca de letras", width="large")
+def dialogo_simbolos():
+    st.session_state.setdefault("mont_nome", "LOVE")
+    st.text_input("Monte o nome aqui (depois adicione à lista)", key="mont_nome")
+    st.markdown("**Inserir no fim do nome** <span class='dica'>(início, meio ou fim: edite o texto acima)</span>", unsafe_allow_html=True)
+    cols = st.columns(8)
+    for i, (tok, gl) in enumerate(core.ATALHOS.items()):
+        with cols[i % 8]:
+            st.image(icone_simbolo(gl), width=44)
+            st.button(tok.strip(":")[:9], key=f"sb{i}", on_click=_cb_add_token, args=(tok,), width="stretch")
+    imgs = core.listar_imagens()
+    if imgs:
+        st.markdown("**Suas imagens**")
+        cols = st.columns(8)
+        for i, (n, pth) in enumerate(imgs.items()):
+            with cols[i % 8]:
+                im = Image.open(pth).convert("RGBA")
+                fundo = Image.new("RGBA", im.size, (28, 31, 39, 255))
+                fundo.alpha_composite(im)
+                fundo.thumbnail((56, 56))
+                st.image(fundo.convert("RGB"), width=44)
+                st.button(n[:9], key=f"ib{i}", on_click=_cb_add_token, args=(f":{n}:",), width="stretch")
+    st.markdown("**Trocar letra por símbolo**")
+    letras = core.letras_do_texto(st.session_state["mont_nome"])
+    if letras:
+        t1, t2, t3 = st.columns(3)
+        t1.selectbox("Letra", letras, key="tr_letra")
+        t2.selectbox("Ocorrência", ["Todas", "Primeira", "Última"], key="tr_qual")
+        t3.selectbox("Trocar por", [r for r in ROTULOS_ENFEITE if ENF[r]], key="tr_por")
+        st.button("Aplicar troca", on_click=_cb_trocar)
+    if st.button("➕ Adicionar à lista de nomes", type="primary", width="stretch"):
+        nova = {"Nome": st.session_state["mont_nome"], "Qtd": 1, "Fonte": PADRAO, "Furo": PADRAO, "Antes": PADRAO, "Depois": PADRAO}
+        st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([nova])], ignore_index=True)
+        st.rerun()
+
+
+@st.dialog("Gabarito de teste do furo", width="large")
+def dialogo_gabarito():
+    st.caption("Barra de 5 mm com furos de medidas próximas à atual (−0,6 a +0,6 mm), da esquerda (menor, canto chanfrado) para a direita. "
+               "O furo onde o seu lápis entra com leve atrito é a medida certa.")
+    if st.button("Gerar gabarito", type="primary"):
+        try:
+            pp = params_de()
+            meds = [round(pp.furo + d, 2) for d in (-0.6, -0.4, -0.2, 0.0, 0.2, 0.4, 0.6)]
+            pasta = os.path.join(SAIDA, "web", st.session_state.sid, "gabarito_" + time.strftime("%H%M%S"))
+            os.makedirs(pasta, exist_ok=True)
+            with st.spinner("Gerando o gabarito..."):
+                arq = core.gerar_gabarito(pp.furo_formato, meds, pasta, folga=pp.furo_folga, rot=pp.furo_rot, canto=pp.furo_canto,
+                                          log=lambda m: None)
+            st.session_state["gabarito"] = (arq, meds, pp.furo_formato)
+        except Exception as e:
+            st.error(str(e))
+    g = st.session_state.get("gabarito")
+    if g:
+        arq, meds, fmt = g
+        st.success(f"Gabarito {fmt}: furos de {', '.join(f'{m:g}' for m in meds)} mm.")
+        st.download_button("⬇️ Baixar gabarito (.3mf)", open(arq, "rb").read(), os.path.basename(arq), type="primary")
+        try:
+            stl = [os.path.join(os.path.dirname(arq), "stl_gabarito", f) for f in os.listdir(os.path.join(os.path.dirname(arq), "stl_gabarito"))][0]
+            v, f = core.ler_stl(stl)
+            objs = viz.dados_malhas([("gabarito", v - v.min(0), f, (0, 0), st.session_state["cor_a"])], alvo_tris=9000)
+            components.html(viz.html_visualizador(objs, None, st.session_state["cor_a"], 360, "escuro"), height=380)
+        except Exception:
+            pass
+
+
+@st.dialog("Predefinições e pedidos salvos (nuvem)", width="large")
+def dialogo_salvos():
+    t1, t2 = st.tabs(["Predefinições", "Pedidos"])
+    with t1:
+        nome_p = st.text_input("Nome da predefinição", key="nome_predef")
+        if st.button("Salvar ajustes atuais") and nome_p.strip():
+            try:
+                sb.salvar_predefinicao(nome_p.strip(), {k: st.session_state[k] for k in DEF})
+                st.success("Salvo.")
+            except Exception as e:
+                st.error(str(e))
+        try:
+            preds = sb.listar_predefinicoes()
+        except Exception:
+            preds = []
+        if preds:
+            esc = st.selectbox("Carregar", [p["nome"] for p in preds], key="sel_predef")
+            c1, c2 = st.columns(2)
+            if c1.button("Carregar predefinição", width="stretch"):
+                for k, v in next(p["ajustes"] for p in preds if p["nome"] == esc).items():
+                    if k in DEF and (k != "fonte" or v in FONTES):
+                        st.session_state[k] = v
+                st.rerun()
+            if c2.button("Apagar predefinição", width="stretch"):
+                sb.apagar_predefinicao(esc)
+                st.rerun()
+    with t2:
+        res_ = st.session_state.get("resultado")
+        if res_ and st.button("☁️ Salvar o pedido atual na nuvem"):
+            try:
+                sb.enviar_arquivo(sb.BUCKET_ARQUIVOS, f"{st.session_state.sid}/{int(time.time())}.zip", res_["zip"], "application/zip")
+                sb.salvar_pedido("Pedido " + time.strftime("%d/%m/%Y %H:%M"), linhas_validas(st.session_state.df), {k: st.session_state[k] for k in DEF})
+                st.success("Pedido salvo.")
+            except Exception as e:
+                st.error(str(e))
+        try:
+            peds = sb.listar_pedidos()
+        except Exception:
+            peds = []
+        for p in peds:
+            with st.expander(f"{p['nome']} · {len(p['itens'])} nome(s)"):
+                st.dataframe(pd.DataFrame(p["itens"]), hide_index=True, width="stretch")
+                c1, c2 = st.columns(2)
+                if c1.button("Carregar este pedido", key="ld" + p["id"]):
+                    st.session_state.df = pd.DataFrame(p["itens"])
+                    for k, v in p["ajustes"].items():
+                        if k in DEF and (k != "fonte" or v in FONTES):
+                            st.session_state[k] = v
+                    st.rerun()
+                if c2.button("Apagar", key="rm" + p["id"]):
+                    sb.apagar_pedido(p["id"])
+                    st.rerun()
+
+
 # ----------------------------------------------------------------------------- geração final (antes de desenhar a barra do topo)
 linhas = linhas_validas(st.session_state.df)
 if st.session_state.pop("_gerar_flag", False) and linhas:
@@ -258,6 +420,13 @@ if st.session_state.get("_msg_ok"):
 
 col_esq, col_dir = st.columns([1, 2.5], gap="medium")
 
+# gancho de teste: STUDIO_ABRIR=simbolos|gabarito|fonte abre o diálogo ao carregar (usado só em testes)
+_abrir_teste = os.environ.get("STUDIO_ABRIR", "")
+if _abrir_teste == "simbolos":
+    dialogo_simbolos()
+elif _abrir_teste == "gabarito":
+    dialogo_gabarito()
+
 # ============================== PAINEL ESQUERDO (Customize)
 with col_esq:
     primeira = linhas[0]["Nome"] if linhas else "Nome"
@@ -266,7 +435,14 @@ with col_esq:
         <div class='t'>Nomes de Lápis Encaixáveis</div><div class='m'>Topo de lápis com o nome · furo sob medida</div>
         <div class='chips'><span>3MF</span><span>PLA</span><span>Textured PEI</span><span>AMS</span></div></div></div>""",
         unsafe_allow_html=True)
-    with st.container(height=760, border=True):
+    tb1, tb2, tb3 = st.columns(3)
+    if tb1.button("🌸 Símbolos", width="stretch", help="Símbolos, imagens e troca de letras por símbolos"):
+        dialogo_simbolos()
+    if tb2.button("🔩 Gabarito", width="stretch", help="Peça de teste para achar a medida do furo"):
+        dialogo_gabarito()
+    if tb3.button("☁️ Salvos", width="stretch", disabled=not sb.configurado(), help="Predefinições e pedidos na nuvem (Supabase)"):
+        dialogo_salvos()
+    with st.container(height=700, border=True):
         hc1, hc2 = st.columns([4, 1])
         hc1.markdown("<div class='tit-sec'>🎛️ Personalizar</div>", unsafe_allow_html=True)
         hc2.button("↺", on_click=_cb_reset, help="Restaurar padrões", width="stretch")
@@ -285,14 +461,22 @@ with col_esq:
         st.session_state.df = st.data_editor(st.session_state.df, column_config=cfg, column_order=ordem, num_rows="dynamic",
                                              width="stretch", key="editor", hide_index=True)
         linhas = linhas_validas(st.session_state.df)
+        st.markdown("**Letras do nome**")
+        st.radio("Caixa", list(CAIXAS), key="caixa", horizontal=True, label_visibility="collapsed")
+        if st.session_state["caixa"] in ("minúsculas", "Primeira Maiúscula", "Como digitado"):
+            st.caption("Letras minúsculas são mais baixas que as maiúsculas: se o furo não couber ou a peça ficar fina, "
+                       "aumente o tamanho da letra ou diminua o furo.")
 
         st.markdown("**Fonte**")
-        st.selectbox("Fonte", list(FONTES), key="fonte", label_visibility="collapsed",
-                     format_func=lambda n: f"{ROTULO_GRUPO.get(n, 'Padrão')} · {n}")
-        uri = amostra_uri(FONTES[st.session_state["fonte"]], st.session_state["fonte"], 32)
+        uri = amostra_uri(FONTES[st.session_state["fonte"]], st.session_state["fonte"], 36)
         if uri:
             st.markdown(f"<img src='{uri}' style='max-width:100%;border-radius:8px'>", unsafe_allow_html=True)
-        st.button("Sugerir ajustes p/ esta fonte", on_click=_cb_sugerir, width="stretch")
+        st.caption(f"{ROTULO_GRUPO.get(st.session_state['fonte'], 'Padrão')} · {st.session_state['fonte']} — {sum(len(n) for _, n in GRUPOS)} fontes disponíveis")
+        fc1, fc2 = st.columns(2)
+        if fc1.button("🔤 Escolher fonte...", width="stretch"):
+            st.session_state["f_n"] = st.session_state.get("f_n", 0) + 1      # tabela nova a cada abertura (sem seleção antiga)
+            dialogo_fonte()
+        fc2.button("✨ Sugerir ajustes", on_click=_cb_sugerir, width="stretch")
         st.slider("Tamanho da letra (mm)", 6.0, 30.0, step=0.5, key="altura")
         st.slider("Espessura da peça (mm)", 4.0, 20.0, step=0.1, key="espessura")
 
@@ -300,13 +484,12 @@ with col_esq:
         st.radio("Modo", list(MODOS), key="modo", horizontal=True, label_visibility="collapsed")
         if MODOS[st.session_state["modo"]] == "zigzag":
             st.slider("Zig-zag: quanto sobe/desce (mm)", 0.2, 3.0, step=0.1, key="zigzag")
-        if MODOS[st.session_state["modo"]] == "cores":
-            cc1, cc2 = st.columns(2)
-            cc1.color_picker("Cor A", value=st.session_state["cor_a"], key="cor_a")
-            cc2.color_picker("Cor B", value=st.session_state["cor_b"], key="cor_b")
-            st.caption("Cada letra alterna A/B. No 3MF são duas partes (filamentos 1 e 2) para o AMS.")
-        else:
-            st.color_picker("Cor do filamento (prévia)", value=st.session_state["cor_a"], key="cor_a")
+        cc1, cc2 = st.columns(2)
+        modo_cores = MODOS[st.session_state["modo"]] == "cores"
+        cc1.color_picker("Cor A" if modo_cores else "Cor do filamento", key="cor_a")
+        cc2.color_picker("Cor B", key="cor_b", disabled=not modo_cores)
+        st.caption("Cada letra alterna A/B. No 3MF são duas partes (filamentos 1 e 2) para o AMS." if modo_cores
+                   else "Cor usada na prévia 3D. Use o modo 'Cores alternadas' para duas cores.")
         st.selectbox("Corpo da letra", list(ESTILOS), key="estilo")
         if ESTILOS[st.session_state["estilo"]] == "vazada":
             st.slider("Espessura do contorno", 0.8, 6.0, step=0.1, key="borda")
@@ -320,7 +503,6 @@ with col_esq:
         st.slider("Largura das letras (×)", 0.4, 1.5, step=0.02, key="largura")
         st.slider("Engrossar traço (mm)", 0.0, 2.0, step=0.05, key="engrossar")
         st.slider("Arredondado da borda (mm)", 0.4, 5.0, step=0.1, key="raio")
-        st.checkbox("Converter o nome para MAIÚSCULAS", key="maiusculas")
 
         st.markdown("**Furo do lápis**")
         st.selectbox("Tipo de lápis", list(core.PRESETS_LAPIS), key="tipo_lapis", on_change=_cb_tipo)
@@ -335,7 +517,7 @@ with col_esq:
         st.markdown("**Enfeites (todos os nomes)**")
         st.selectbox("Antes do nome", ROTULOS_ENFEITE, key="enf_antes")
         st.selectbox("Depois do nome", ROTULOS_ENFEITE, key="enf_depois")
-        st.caption("No meio do nome: digite :coracao:, :flor:, :estrela: ... Símbolos e troca de letras ficam na versão completa (app_web).")
+        st.caption("No meio do nome ou no lugar de uma letra: use o botão 🌸 Símbolos (ou digite :coracao:, :flor:...).")
 
         with st.expander("Importar fonte ou imagem"):
             ups = st.file_uploader("Fontes (.ttf / .otf)", type=["ttf", "otf"], accept_multiple_files=True, key="up_f")

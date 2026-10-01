@@ -50,7 +50,8 @@ class Params:
     borda: float = 1.6          # vazada: espessura da parede do contorno; base: largura da borda em volta (mm)
     fundo: float = 1.0          # vazada: espessura do fundo (0 = vazada de lado a lado)
     altura_borda: float = 4.0   # base: altura do degrau da borda (mm)
-    maiusculas: bool = True     # converte o nome para MAIÚSCULAS (o furo exige letras altas)
+    maiusculas: bool = True     # (antigo) True = MAIÚSCULAS; só vale quando caixa == 'auto'
+    caixa: str = "auto"         # auto | maiusculas | minusculas | digitado | capitalizar (Primeira Maiúscula de cada palavra)
     modo: str = "uniforme"      # uniforme | zigzag (letras com alturas alternadas) | cores (cada letra alterna cor A/B para o AMS)
     zigzag: float = 1.0         # modo zigzag: quanto as letras pares sobem e as ímpares descem (mm)
     largura: float = 0.72       # 1.0 = largura normal da fonte; <1 comprime as letras (o original é condensado)
@@ -673,7 +674,7 @@ def seguro(n):
 
 
 def chave(nome, p):
-    h = hashlib.md5(repr((p.fonte, p.altura, p.espessura, p.raio, p.engrossar, p.espaco, p.base_arredondada, p.voxel, p.furo, p.furo_formato, p.furo_folga, p.furo_rot, p.furo_canto, p.parede_base, p.largura, p.ponte, p.estilo, p.borda, p.fundo, p.altura_borda, p.modo, p.zigzag, nome, _assinatura_imagens(nome), 7)).encode()).hexdigest()[:6]
+    h = hashlib.md5(repr((p.fonte, p.altura, p.espessura, p.raio, p.engrossar, p.espaco, p.base_arredondada, p.voxel, p.furo, p.furo_formato, p.furo_folga, p.furo_rot, p.furo_canto, p.parede_base, p.largura, p.ponte, p.estilo, p.borda, p.fundo, p.altura_borda, p.modo, p.zigzag, nome, _assinatura_imagens(nome), 8)).encode()).hexdigest()[:6]
     return f"{seguro(nome)}_{h}"
 
 
@@ -870,7 +871,7 @@ def gerar_tudo(itens, saida, log=print, refazer=False, pasta_pedido=None, detalh
         n, q, p = it[:3]
         rot = it[3] if len(it) > 3 and it[3] else None
         if n.strip() and int(q) > 0:
-            norm.append(((n.strip().upper() if p.maiusculas else n.strip()), int(q), p, rot))
+            norm.append((aplicar_caixa(n.strip(), p), int(q), p, rot))
     if not norm:
         raise ValueError("Nenhum nome informado")
     unicos, rotulos = {}, {}
@@ -978,12 +979,18 @@ def sugerir_ajustes(nome_fonte):
 GRUPOS_ESPECIAIS = [   # (título do grupo, palavras-chave da família da fonte)
     ("★ Script estilo Lobster / Disney", ("lobster", "pacifico", "cookie", "kaushan", "grand hotel", "yellowtail", "damion", "playball",
                                           "courgette", "sacramento", "great vibes", "dancing", "lily script", "leckerli", "shrikhand",
-                                          "berkshire", "emilys", "fontdiner", "caveat", "gochi")),
+                                          "berkshire", "emilys", "fontdiner", "caveat", "gochi", "alex brush", "allura", "bad script",
+                                          "knewave", "lovers quarrel", "marck script", "niconne", "norican", "oleo script", "parisienne",
+                                          "pattaya", "sofia", "sriracha", "permanent marker", "kalam", "patrick hand", "handlee", "amatic")),
     ("★ Infantil / Cartoon", ("chewy", "modak", "titan one", "luckiest", "fredoka", "baloo", "bubblegum", "sniglet", "lilita", "paytone",
                               "sigmar", "chelsea", "mouse memoirs", "bangers", "comic neue", "pangolin", "sansita", "fascinate",
-                              "rubik bubbles", "margarine")),
-    ("★ Pixel (estilo Minecraft)", ("pixel", "silkscreen", "press start", "vt323", "jersey", "tiny5", "micro 5")),
-    ("★ Pirata / Faroeste (estilo One Piece)", ("pirata", "jolly", "new rocker", "sancreek", "rye", "ribeye")),
+                              "rubik bubbles", "margarine", "bevan", "boogaloo", "carter one", "chicle", "coiny", "concert one",
+                              "fugaz", "galindo", "gorditas", "jua", "kavoon", "lemon", "londrina", "mochiy", "mogra", "rammetto",
+                              "righteous", "sonsie", "spicy rice", "varela round", "bungee")),
+    ("★ Pixel (estilo Minecraft)", ("pixel", "silkscreen", "press start", "vt323", "jersey", "tiny5", "micro 5", "dotgothic",
+                                    "jacquard", "handjet")),
+    ("★ Pirata / Faroeste (estilo One Piece)", ("pirata", "jolly", "new rocker", "sancreek", "rye", "ribeye", "almendra", "creepster",
+                                                "eater", "ewert", "holtwood", "metamorphous", "uncial", "vast shadow", "wellfleet")),
     ("★ Símbolos e emojis (flores, corações)", ("emoji", "symbols")),
 ]
 
@@ -1094,3 +1101,23 @@ def partes_rapidas(texto, p, voxel=0.2, alvo=15000):
             v2, f2 = malha_skimage(oc, q.voxel, alvo // 2)
             out.append((v2 - mn, f2, i))
     return out
+
+
+def aplicar_caixa(texto, p):
+    """Aplica a caixa das letras ao texto sem mexer nos símbolos ':nome:'. caixa: maiusculas | minusculas | digitado | capitalizar."""
+    c = p.caixa
+    if c == "auto":
+        c = "maiusculas" if p.maiusculas else "digitado"
+    if c == "digitado":
+        return texto
+    partes = _SPLIT_TOKEN.split(texto)
+    for i in range(0, len(partes), 2):                    # índices pares = texto comum; ímpares = símbolos
+        t = partes[i]
+        if c == "maiusculas":
+            t = t.upper()
+        elif c == "minusculas":
+            t = t.lower()
+        elif c == "capitalizar":
+            t = " ".join(w[:1].upper() + w[1:].lower() for w in t.split(" "))
+        partes[i] = t
+    return "".join(partes)
