@@ -1139,3 +1139,35 @@ def aplicar_caixa(texto, p):
             t = " ".join(w[:1].upper() + w[1:].lower() for w in t.split(" "))
         partes[i] = t
     return "".join(partes)
+
+
+def ler_lista_nomes(conteudo, nome_arquivo, so_primeiro_nome=False):
+    """Lê uma lista de nomes de .csv/.txt (NOME;QTD;FONTE;FURO por linha, '#' comenta) ou .xlsx (colunas na mesma ordem).
+    Retorna [(nome, qtd, fonte_ou_None, furo_ou_None)]. so_primeiro_nome=True apaga o segundo nome de nomes compostos."""
+    linhas = []
+    if nome_arquivo.lower().endswith((".xlsx", ".xls")):
+        import io
+        import pandas as pd
+        df = pd.read_excel(io.BytesIO(conteudo), header=None, dtype=str).fillna("")
+        for _, r in df.iterrows():
+            linhas.append([str(c).strip() for c in r.tolist()])
+        if linhas and linhas[0] and linhas[0][0].strip().lower() in ("nome", "nomes", "name"):
+            linhas = linhas[1:]                              # cabeçalho
+    else:
+        txt = conteudo.decode("utf-8-sig", errors="replace") if isinstance(conteudo, bytes) else conteudo
+        for ln in txt.splitlines():
+            ln = ln.strip()
+            if not ln or ln.startswith("#"):
+                continue
+            sep = ";" if ";" in ln else ("	" if "	" in ln else ("," if "," in ln and ln.rsplit(",", 1)[1].strip().isdigit() else None))
+            linhas.append([c.strip() for c in ln.split(sep)] if sep else [ln])
+    out = []
+    for c in linhas:
+        if not c or not c[0].strip():
+            continue
+        nome = c[0].strip()
+        if so_primeiro_nome and " " in nome and ":" not in nome:
+            nome = nome.split()[0]
+        qtd = int(float(c[1])) if len(c) > 1 and c[1].replace(".", "", 1).isdigit() else 1
+        out.append((nome, max(1, qtd), c[2] if len(c) > 2 and c[2] else None, c[3] if len(c) > 3 and c[3] else None))
+    return out

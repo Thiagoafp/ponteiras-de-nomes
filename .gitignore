@@ -10,3 +10,6 @@ ponteira_nomes.blend1
 .env
 # fontes e imagens importadas por você (opcional versionar)
 fontes/importadas/
+
+# listas de nomes de pessoas (nao publicar)
+gerar_turma.py

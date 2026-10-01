@@ -447,6 +447,28 @@ with col_esq:
         hc1.markdown("<div class='tit-sec'>🎛️ Personalizar</div>", unsafe_allow_html=True)
         hc2.button("↺", on_click=_cb_reset, help="Restaurar padrões", width="stretch")
 
+        with st.expander("📥 Importar lista de nomes (.csv, .txt, .xlsx)"):
+            st.caption("Uma linha por nome. Colunas: NOME;QUANTIDADE;FONTE;FURO (tudo depois do nome é opcional). "
+                       "Também dá para colar linhas de uma planilha direto na tabela abaixo.")
+            so1 = st.checkbox("Usar só o primeiro nome (apaga o segundo nome dos nomes compostos)", key="so_primeiro")
+            subst = st.checkbox("Substituir a lista atual (em vez de acrescentar)", key="subst_lista")
+            up = st.file_uploader("Arquivo da lista", type=["csv", "txt", "xlsx"], key="up_lista")
+            if up is not None and st.button("Importar", type="primary", key="bt_imp"):
+                try:
+                    itens_imp = core.ler_lista_nomes(up.getvalue(), up.name, so_primeiro_nome=so1)
+                    novas = pd.DataFrame([{"Nome": n, "Qtd": q, "Fonte": f if f in FONTES else PADRAO,
+                                           "Furo": next((k for k in core.FORMATOS_FURO if fu and k.lower().startswith(fu.lower()[:4])), PADRAO),
+                                           "Antes": PADRAO, "Depois": PADRAO} for n, q, f, fu in itens_imp])
+                    if novas.empty:
+                        st.warning("Não achei nomes nesse arquivo.")
+                    else:
+                        base_df = pd.DataFrame(columns=novas.columns) if subst else st.session_state.df
+                        st.session_state.df = pd.concat([base_df, novas], ignore_index=True)
+                        st.session_state["_msg_ok"] = f"{len(novas)} nome(s) importado(s)."
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"Não consegui ler o arquivo: {e}")
+
         st.markdown("**Nomes** <span class='dica'>(tabela: nome e quantidade)</span>", unsafe_allow_html=True)
         st.toggle("Opções por nome (fonte, furo, enfeites)", key="opcoes_por_nome")
         ordem = ["Nome", "Qtd", "Fonte", "Furo", "Antes", "Depois"] if st.session_state["opcoes_por_nome"] else ["Nome", "Qtd"]

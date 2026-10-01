@@ -6,3 +6,4 @@ pandas>=2.0
 scikit-image>=0.22
 fast-simplification>=0.1.7
 requests>=2.31
+openpyxl>=3.1
