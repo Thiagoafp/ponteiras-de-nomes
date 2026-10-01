@@ -23,6 +23,7 @@ CFG = os.path.join(core.HERE, "config_gui.json")
 SAIDA = os.path.join(core.HERE, "saida")
 PADRAO = "(padrão)"
 NENHUM = "(nenhum)"
+CAIXAS = {"MAIÚSCULAS": "maiusculas", "minúsculas": "minusculas", "Primeira Maiúscula": "capitalizar", "Como digitado": "digitado"}
 ESTILOS = {"Fechada (sólida)": "fechada", "Vazada (só o contorno)": "vazada", "Com base / borda em degrau": "base"}
 
 
@@ -43,7 +44,7 @@ class App(tk.Tk):
             "fonte": tk.StringVar(), "altura": v(value=11.5), "espessura": v(value=10.9), "raio": v(value=2.2),
             "engrossar": v(value=0.45), "espaco": v(value=-0.6), "largura": v(value=0.72), "ponte": v(value=2.4),
             "estilo": tk.StringVar(value=list(ESTILOS)[0]), "borda": v(value=1.6), "fundo": v(value=1.0), "altura_borda": v(value=4.0),
-            "maiusculas": tk.BooleanVar(value=True), "base_arredondada": tk.BooleanVar(value=False),
+            "caixa": tk.StringVar(value="MAIÚSCULAS"), "dois_lados": tk.BooleanVar(value=False), "base_arredondada": tk.BooleanVar(value=False),
             "enf_antes": tk.StringVar(value=NENHUM), "enf_depois": tk.StringVar(value=NENHUM),
             "tipo_lapis": tk.StringVar(value=list(core.PRESETS_LAPIS)[0]), "furo_formato": tk.StringVar(value="Circular"),
             "furo": v(value=8.0), "furo_folga": v(value=0.0), "furo_rot": v(value=0.0), "furo_canto": v(value=1.2),
@@ -156,6 +157,16 @@ class App(tk.Tk):
         ttk.Button(rb, text="Importar fonte...", command=self._importar_fonte).pack(side="left")
         ttk.Button(rb, text="Sugerir ajustes p/ esta fonte", command=self._sugerir).pack(side="left", padx=4)
 
+        pc = ttk.LabelFrame(dire, text="Letras do nome")
+        pc.pack(fill="x", pady=4)
+        for i, rot in enumerate(CAIXAS):
+            ttk.Radiobutton(pc, text=rot, value=rot, variable=self.var["caixa"]).grid(row=i // 2, column=i % 2, sticky="w", padx=8, pady=1)
+        ttk.Checkbutton(pc, text="Nome legível nos dois lados (frente e verso)", variable=self.var["dois_lados"]).grid(
+            row=2, column=0, columnspan=2, sticky="w", padx=8, pady=(4, 0))
+        ttk.Label(pc, text="Metade de cima com o nome e metade de baixo com o nome de cabeça para baixo: ao girar o lápis 180° "
+                           "o outro lado também lê de pé. Precisa de suporte na impressão. Minúsculas são mais baixas: confira o furo.",
+                  foreground="#666", wraplength=370, justify="left").grid(row=3, column=0, columnspan=2, sticky="w", padx=8, pady=(2, 4))
+
         pe = ttk.LabelFrame(dire, text="Enfeites em todos os nomes (antes / depois)")
         pe.pack(fill="x", pady=4)
         rot = [r for r, _ in core.opcoes_enfeite()]
@@ -177,7 +188,6 @@ class App(tk.Tk):
         self._slider(ps, "Largura das letras (×)", "largura", 0.4, 1.5, 0.02)
         self._slider(ps, "Espaço entre letras", "espaco", -3, 3, 0.1)
         self._slider(ps, "Largura das pontes", "ponte", 1, 5, 0.1)
-        ttk.Checkbutton(ps, text="Converter o nome para MAIÚSCULAS (recomendado)", variable=self.var["maiusculas"]).pack(anchor="w", padx=6, pady=2)
         ttk.Checkbutton(ps, text="Arredondar também a base (evite)", variable=self.var["base_arredondada"]).pack(anchor="w", padx=6, pady=2)
 
         pst = ttk.LabelFrame(dire, text="Estilo da letra (corpo e borda)")
@@ -281,7 +291,7 @@ class App(tk.Tk):
         return core.Params(
             fonte=path, altura=float(v["altura"].get()), espessura=float(v["espessura"].get()), raio=float(v["raio"].get()),
             engrossar=float(v["engrossar"].get()), espaco=float(v["espaco"].get()), largura=float(v["largura"].get()),
-            ponte=float(v["ponte"].get()), base_arredondada=bool(v["base_arredondada"].get()), maiusculas=bool(v["maiusculas"].get()),
+            ponte=float(v["ponte"].get()), base_arredondada=bool(v["base_arredondada"].get()), caixa=CAIXAS[v["caixa"].get()], dois_lados=bool(v["dois_lados"].get()),
             estilo=ESTILOS[v["estilo"].get()], borda=float(v["borda"].get()), fundo=float(v["fundo"].get()),
             altura_borda=float(v["altura_borda"].get()),
             furo_formato=core.FORMATOS_FURO[fmt_nome][0],
@@ -291,7 +301,7 @@ class App(tk.Tk):
 
     def _texto(self, item):
         nome, _, _, _, antes, depois = item
-        return core.compor_nome(nome.upper() if self.var["maiusculas"].get() else nome,
+        return core.compor_nome(core.aplicar_caixa(nome, core.Params(caixa=CAIXAS[self.var["caixa"].get()])),
                                 self._token(antes, "enf_antes"), self._token(depois, "enf_depois"))
 
     # ------------------------------------------------------------------ lista
@@ -660,6 +670,8 @@ class App(tk.Tk):
             pass
         if self.var["fonte"].get() not in self.fontes:
             self.var["fonte"].set(next(iter(self.fontes)))
+        if self.var["caixa"].get() not in CAIXAS:
+            self.var["caixa"].set("MAIÚSCULAS")
         if self.var["estilo"].get() not in ESTILOS:
             self.var["estilo"].set(list(ESTILOS)[0])
 

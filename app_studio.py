@@ -103,7 +103,7 @@ ROTULOS_ENFEITE = [r for r, _ in OPCOES_ENFEITE]
 DEF = {
     "fonte": next((k for k in FONTES if k.lower().startswith(("lilita", "arial rounded", "poppins extra"))), next(iter(FONTES))),
     "altura": 11.5, "espessura": 10.9, "raio": 2.2, "engrossar": 0.45, "largura": 0.72, "espaco": -0.6, "ponte": 2.4,
-    "caixa": "MAIÚSCULAS", "modo": "Uniforme", "zigzag": 1.2, "estilo": "Fechada", "borda": 1.6, "fundo": 1.0, "altura_borda": 4.0,
+    "caixa": "MAIÚSCULAS", "dois_lados": False, "modo": "Uniforme", "zigzag": 1.2, "estilo": "Fechada", "borda": 1.6, "fundo": 1.0, "altura_borda": 4.0,
     "tipo_lapis": list(core.PRESETS_LAPIS)[0], "furo_formato": "Circular", "furo": 8.0, "furo_folga": 0.0, "furo_rot": 0.0,
     "furo_canto": 1.2, "parede_base": 1.0, "qualidade": "Normal", "enf_antes": NENHUM, "enf_depois": NENHUM,
     "cor_a": "#2fd17b", "cor_b": "#ff8a1f", "opcoes_por_nome": False,
@@ -142,7 +142,7 @@ def params_de(fonte_nome=None, furo_nome=None):
     return core.Params(
         fonte=FONTES.get(fn) or core.resolver_fonte(fn), altura=float(s["altura"]), espessura=float(s["espessura"]), raio=float(s["raio"]),
         engrossar=float(s["engrossar"]), espaco=float(s["espaco"]), largura=float(s["largura"]), ponte=float(s["ponte"]),
-        caixa=CAIXAS[s["caixa"]], modo=MODOS[s["modo"]], zigzag=float(s["zigzag"]), estilo=ESTILOS[s["estilo"]],
+        caixa=CAIXAS[s["caixa"]], dois_lados=bool(s["dois_lados"]), modo=MODOS[s["modo"]], zigzag=float(s["zigzag"]), estilo=ESTILOS[s["estilo"]],
         borda=float(s["borda"]), fundo=float(s["fundo"]), altura_borda=float(s["altura_borda"]), parede_base=float(s["parede_base"]),
         furo_formato=core.FORMATOS_FURO[fmt_nome][0],
         furo=(core.FORMATOS_FURO[furo_nome][1] if furo_nome in core.FORMATOS_FURO else float(s["furo"])),
@@ -463,6 +463,8 @@ with col_esq:
         linhas = linhas_validas(st.session_state.df)
         st.markdown("**Letras do nome**")
         st.radio("Caixa", list(CAIXAS), key="caixa", horizontal=True, label_visibility="collapsed")
+        st.checkbox("Nome legível nos dois lados (frente e verso)", key="dois_lados",
+                    help="Metade de cima com o nome e metade de baixo com o nome de cabeça para baixo: ao girar o lápis 180° o outro lado também lê de pé. Precisa de suporte na impressão.")
         if st.session_state["caixa"] in ("minúsculas", "Primeira Maiúscula", "Como digitado"):
             st.caption("Letras minúsculas são mais baixas que as maiúsculas: se o furo não couber ou a peça ficar fina, "
                        "aumente o tamanho da letra ou diminua o furo.")

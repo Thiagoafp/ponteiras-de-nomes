@@ -37,6 +37,10 @@ Formato: `Nome:quantidade:fonte:furo` (tudo depois do nome é opcional). Na linh
   Em **Enfeites** dá para pôr uma imagem/símbolo **antes e depois** de todos os nomes (e trocar por nome nas colunas Antes/Depois).
 - Nomes em **MAIÚSCULAS** por padrão (as letras precisam ser mais altas que o furo); desmarque se usar uma fonte/enfeite que peça caixa mista.
 
+## Caixa das letras e nome nos dois lados
+- **Letras do nome** (painel da direita na versão desktop; logo abaixo da tabela de nomes no Studio): **MAIÚSCULAS · minúsculas · Primeira Maiúscula · Como digitado**. Os símbolos `:coracao:` não mudam. Minúsculas são mais baixas: confira se o furo cabe.
+- **Nome legível nos dois lados (frente e verso)**: a metade de cima da peça traz o nome normal e a metade de baixo traz o mesmo nome de cabeça para baixo; ao girar o lápis 180° o outro lado também lê de pé. As duas metades se encaixam numa peça só. **Precisa de suporte na impressão** (a metade de cima fica em balanço onde a forma das letras difere). Linha de comando: `--caixa capitalizar --dois-lados`.
+
 ## Tipo de lápis e gabarito de teste
 - **Tipo de lápis**: *Comum* (lápis de 7 a 7,5 mm; furo 8,0 / 7,5 / 7,5 mm; letra 11,5 mm; espessura 10,9 mm) ou *Jumbo* (10 a 10,5 mm; furo 10,8 / 10,4 / 10,6 mm; letra 15,5 mm; espessura 13,5 mm). Na linha de comando: `--lapis jumbo`.
 - **Gabarito de teste do furo** (botão na interface, ou `python gerar_ponteiras.py --gabarito "7.0,7.2,7.4,7.6,7.8,8.0" --furo-formato hexagonal`):

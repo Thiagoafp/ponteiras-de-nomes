@@ -52,6 +52,7 @@ class Params:
     altura_borda: float = 4.0   # base: altura do degrau da borda (mm)
     maiusculas: bool = True     # (antigo) True = MAIÚSCULAS; só vale quando caixa == 'auto'
     caixa: str = "auto"         # auto | maiusculas | minusculas | digitado | capitalizar (Primeira Maiúscula de cada palavra)
+    dois_lados: bool = False    # nome legível nos dois lados: metade de cima normal, metade de baixo espelhada (ao girar o lápis 180° lê-se de pé)
     modo: str = "uniforme"      # uniforme | zigzag (letras com alturas alternadas) | cores (cada letra alterna cor A/B para o AMS)
     zigzag: float = 1.0         # modo zigzag: quanto as letras pares sobem e as ímpares descem (mm)
     largura: float = 0.72       # 1.0 = largura normal da fonte; <1 comprime as letras (o original é condensado)
@@ -490,25 +491,42 @@ def ocupacao(m, yc, p, rot=None):
         yc = yc + pad * res
         if rot is not None:
             rot = np.pad(rot, pad, mode="edge")
-    if p.estilo == "vazada":
-        parede = max(p.borda, 3 * res)
-        dist = ndi.distance_transform_edt(m) * res
-        anel = _ligar(m & (dist <= parede), p)           # liga laços soltos com pontes (como num estêncil)
-        dist_a = ndi.distance_transform_edt(anel) * res
-        g = _perfil(z, p.espessura, min(p.raio, parede / 2), p)
-        occ = (dist_a[:, :, None] >= np.maximum(g, res * 0.5)[None, None, :]) & anel[:, :, None]
-        if p.fundo > 0:
-            occ |= m[:, :, None] & (z[None, None, :] <= p.fundo)
-    else:
-        dist = ndi.distance_transform_edt(m) * res
+    if p.dois_lados:
+        # deixa a máscara simétrica em torno do eixo do furo, para o espelho (de cabeça para baixo) cair no lugar certo
+        H = m.shape[0]
+        rc = H - yc / res                                # linha do eixo, contada a partir do topo
+        cima = int(round(max(0.0, H - 2 * rc)))
+        baixo = int(round(max(0.0, 2 * rc - H)))
+        m = np.pad(m, ((cima, baixo), (0, 0)))
+        yc = m.shape[0] / 2 * res
+
+    def corpo(mm):
+        """Volume (linhas, colunas, z) de uma máscara no estilo escolhido."""
+        if p.estilo == "vazada":
+            parede = max(p.borda, 3 * res)
+            dist = ndi.distance_transform_edt(mm) * res
+            anel = _ligar(mm & (dist <= parede), p)      # liga laços soltos com pontes (como num estêncil)
+            dist_a = ndi.distance_transform_edt(anel) * res
+            g = _perfil(z, p.espessura, min(p.raio, parede / 2), p)
+            o = (dist_a[:, :, None] >= np.maximum(g, res * 0.5)[None, None, :]) & anel[:, :, None]
+            if p.fundo > 0:
+                o |= mm[:, :, None] & (z[None, None, :] <= p.fundo)
+            return o
+        dist = ndi.distance_transform_edt(mm) * res
         g = _perfil(z, p.espessura, p.raio, p)
-        occ = (dist[:, :, None] >= np.maximum(g, res * 0.5)[None, None, :]) & m[:, :, None]
+        o = (dist[:, :, None] >= np.maximum(g, res * 0.5)[None, None, :]) & mm[:, :, None]
         if p.estilo == "base":
-            halo = ndi.distance_transform_edt(~m) <= p.borda / res
+            halo = ndi.distance_transform_edt(~mm) <= p.borda / res
             dist_h = ndi.distance_transform_edt(halo) * res
             hb = min(p.altura_borda, p.espessura)
             gb = _perfil(z, hb, min(p.raio, hb * 0.8, p.borda), p)
-            occ |= (dist_h[:, :, None] >= np.maximum(gb, res * 0.5)[None, None, :]) & halo[:, :, None] & (z[None, None, :] <= hb)
+            o |= (dist_h[:, :, None] >= np.maximum(gb, res * 0.5)[None, None, :]) & halo[:, :, None] & (z[None, None, :] <= hb)
+        return o
+
+    occ = corpo(m)
+    if p.dois_lados:
+        occ_b = corpo(m[::-1])                           # metade de baixo: o mesmo nome virado de cabeça para baixo
+        occ = np.where((z >= p.espessura / 2)[None, None, :], occ, occ_b)
     occ = np.flip(occ, 0).transpose(1, 0, 2)              # (x=colunas, y=linhas invertidas, z); linha 0 = topo -> y máximo
     nx, ny, nz = occ.shape
     y = (np.arange(ny) + 0.5) * res
