@@ -100,10 +100,12 @@ OPCOES_ENFEITE = core.opcoes_enfeite()
 ENF = dict(OPCOES_ENFEITE)
 ROTULOS_ENFEITE = [r for r, _ in OPCOES_ENFEITE]
 
+PRODUTOS = {"Ponteira de lápis": "ponteira", "Chaveiro (nome inteiro)": "chaveiro", "Corrente articulada": "corrente", "Chaveiro com base de contorno": "tag"}
+
 DEF = {
     "fonte": next((k for k in FONTES if k.lower().startswith(("lilita", "arial rounded", "poppins extra"))), next(iter(FONTES))),
-    "altura": 11.5, "espessura": 10.9, "raio": 2.2, "engrossar": 0.45, "largura": 0.72, "espaco": -0.6, "ponte": 2.4,
-    "caixa": "MAIÚSCULAS", "dois_lados": False, "modo": "Uniforme", "zigzag": 1.2, "estilo": "Fechada", "borda": 1.6, "fundo": 1.0, "altura_borda": 4.0,
+    "altura": 12.0, "espessura": 10.0, "raio": 1.0, "engrossar": 0.7, "largura": 0.9, "inclinacao": 6.0, "ondula": 0.8, "espaco": -1.0, "ponte": 2.4,
+    "produto": "Ponteira de lápis", "base_alt": 2.0, "relevo": 1.0, "elo_largo": 15.0, "elo_ancho": 12.0, "elo_alto": 6.0, "elo_espaco": 1.0, "elo_primeiro": True, "elo_ultimo": False, "elo_forma": "Quadrado arredondado", "elo_canto": 3.0, "elo_borda": 1.0, "argola_ext": 11.0, "argola_furo": 4.5, "argola_lado": "Esquerda", "caixa": "MAIÚSCULAS", "material": "PLA", "dois_lados": False, "modo": "Uniforme", "zigzag": 1.2, "estilo": "Fechada", "borda": 1.6, "fundo": 1.0, "altura_borda": 4.0,
     "tipo_lapis": list(core.PRESETS_LAPIS)[0], "furo_formato": "Circular", "furo": 8.0, "furo_folga": 0.0, "furo_rot": 0.0,
     "furo_canto": 1.2, "parede_base": 1.0, "qualidade": "Normal", "enf_antes": NENHUM, "enf_depois": NENHUM,
     "cor_a": "#2fd17b", "cor_b": "#ff8a1f", "opcoes_por_nome": False,
@@ -141,7 +143,9 @@ def params_de(fonte_nome=None, furo_nome=None):
     fmt_nome = furo_nome if furo_nome in core.FORMATOS_FURO else s["furo_formato"]
     return core.Params(
         fonte=FONTES.get(fn) or core.resolver_fonte(fn), altura=float(s["altura"]), espessura=float(s["espessura"]), raio=float(s["raio"]),
-        engrossar=float(s["engrossar"]), espaco=float(s["espaco"]), largura=float(s["largura"]), ponte=float(s["ponte"]),
+        engrossar=float(s["engrossar"]), espaco=float(s["espaco"]), produto=PRODUTOS[s["produto"]], relevo=float(s["relevo"]), base_alt=float(s["base_alt"]), elo_largo=float(s["elo_largo"]), elo_ancho=float(s["elo_ancho"]), elo_alto=float(s["elo_alto"]),
+        elo_espaco=float(s["elo_espaco"]), elo_forma="quadrado" if s["elo_forma"].startswith("Quadrado") else "reto", elo_canto=float(s["elo_canto"]), elo_borda=float(s["elo_borda"]), elo_primeiro=bool(s["elo_primeiro"]), elo_ultimo=bool(s["elo_ultimo"]), argola_ext=float(s["argola_ext"]), argola_furo=float(s["argola_furo"]),
+        argola_lado=s["argola_lado"].lower(), largura=float(s["largura"]), inclinacao=float(s["inclinacao"]), ondula=float(s["ondula"]), ponte=float(s["ponte"]),
         caixa=CAIXAS[s["caixa"]], dois_lados=bool(s["dois_lados"]), modo=MODOS[s["modo"]], zigzag=float(s["zigzag"]), estilo=ESTILOS[s["estilo"]],
         borda=float(s["borda"]), fundo=float(s["fundo"]), altura_borda=float(s["altura_borda"]), parede_base=float(s["parede_base"]),
         furo_formato=core.FORMATOS_FURO[fmt_nome][0],
@@ -180,6 +184,12 @@ def _cb_tipo():
     alt, esp = core.aplicar_preset(st.session_state["tipo_lapis"])
     st.session_state["altura"], st.session_state["espessura"] = alt, esp
     st.session_state["furo"] = core.FORMATOS_FURO[st.session_state["furo_formato"]][1]
+
+
+def _cb_produto():
+    ps = {"Chaveiro (nome inteiro)": core.CHAVEIRO, "Corrente articulada": core.CORRENTE, "Chaveiro com base de contorno": core.TAG}.get(st.session_state["produto"])
+    for k in set(core.CHAVEIRO) | set(core.CORRENTE) | set(core.TAG):
+        st.session_state[k] = ps[k] if ps and k in ps else DEF[k]
 
 
 def _cb_formato():
@@ -382,7 +392,7 @@ if st.session_state.pop("_gerar_flag", False) and linhas:
         pasta = os.path.join(SAIDA, "web", st.session_state.sid, "pedido_" + time.strftime("%Y-%m-%d_%H%M%S"))
         det = {}
         with st.spinner("Gerando as peças na resolução final..."):
-            arqs = core.gerar_tudo(itens, SAIDA, log=lambda m: None, pasta_pedido=pasta, detalhes=det)
+            arqs = core.gerar_tudo(itens, SAIDA, log=lambda m: None, pasta_pedido=pasta, detalhes=det, material=st.session_state["material"])
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
             for a in arqs:
@@ -483,6 +493,12 @@ with col_esq:
         st.session_state.df = st.data_editor(st.session_state.df, column_config=cfg, column_order=ordem, num_rows="dynamic",
                                              width="stretch", key="editor", hide_index=True)
         linhas = linhas_validas(st.session_state.df)
+        st.markdown("**Produto**")
+        st.radio("Produto", list(PRODUTOS), key="produto", horizontal=True, on_change=_cb_produto, label_visibility="collapsed")
+        st.markdown("**Impressão**")
+        st.selectbox("Material do filamento", list(core.MATERIAIS), key="material",
+                     help="Ajusta no arquivo .3mf a temperatura do bico e da mesa, a ventoinha e a vazão máxima. Valores de partida (faixas usuais): confirme com uma peça de teste.")
+        st.caption("Impressora: Bambu Lab P1S · placa Textured PEI (perfil do seu projeto). " + core.MATERIAIS[st.session_state["material"]]["nota"])
         st.markdown("**Letras do nome**")
         st.radio("Caixa", list(CAIXAS), key="caixa", horizontal=True, label_visibility="collapsed")
         st.checkbox("Nome legível nos dois lados (frente e verso)", key="dois_lados",
@@ -502,41 +518,90 @@ with col_esq:
             dialogo_fonte()
         fc2.button("✨ Sugerir ajustes", on_click=_cb_sugerir, width="stretch")
         st.slider("Tamanho da letra (mm)", 6.0, 30.0, step=0.5, key="altura")
-        st.slider("Espessura da peça (mm)", 4.0, 20.0, step=0.1, key="espessura")
+        corrente = st.session_state["produto"] == "Corrente articulada"
+        if corrente:
+            st.markdown("**Elos da corrente**")
+            st.radio("Forma do elo", ["Quadrado arredondado", "Reto (bloco com chanfro)"], key="elo_forma", horizontal=True)
+            if st.session_state["elo_forma"].startswith("Quadrado"):
+                st.slider("Cantos arredondados (mm)", 1.0, 6.0, step=0.5, key="elo_canto")
+                st.slider("Arestas arredondadas (mm)", 0.2, 2.5, step=0.1, key="elo_borda")
+            st.slider("Relevo da letra (mm)", -2.0, 3.0, step=0.1, key="relevo", help="Positivo = letra em relevo; negativo = letra afundada na peça.")
+            st.slider("Comprimento do elo (mm)", 10.0, 30.0, step=1.0, key="elo_largo")
+            st.slider("Largura do elo (mm)", 8.0, 20.0, step=1.0, key="elo_ancho")
+            st.slider("Altura do elo (mm)", 6.0, 12.0, step=0.5, key="elo_alto")
+            st.slider("Vão entre elos (mm)", 0.5, 2.0, step=0.1, key="elo_espaco")
+            st.checkbox("Pino para argola no primeiro elo (chaveiro)", key="elo_primeiro")
+            st.checkbox("Argola também no último elo (pulseira)", key="elo_ultimo")
+            cc1, cc2 = st.columns(2)
+            cc1.color_picker("Cor do elo", key="cor_a")
+            cc2.color_picker("Cor da letra", key="cor_b")
+            st.caption("Cada elo é uma peça; imprimem montados (articulados). No 3MF o elo é o filamento 1 e a letra o filamento 2 (AMS). "
+                       "Se a corrente travar, aumente o vão entre elos e imprima de novo.")
+        elif st.session_state["produto"] == "Chaveiro com base de contorno":
+            st.markdown("**Base de contorno**")
+            st.slider("Largura da base em volta do nome (mm)", 1.0, 5.0, step=0.1, key="borda")
+            st.slider("Espessura da base (mm)", 1.0, 5.0, step=0.1, key="base_alt")
+            st.slider("Relevo da letra (mm)", 0.6, 3.0, step=0.1, key="relevo")
+            cc1, cc2 = st.columns(2)
+            cc1.color_picker("Cor da base", key="cor_a")
+            cc2.color_picker("Cor da letra", key="cor_b")
+            st.caption("No 3MF a base é o filamento 1 e a letra o filamento 2 (AMS). Sem AMS, imprima tudo numa cor ou troque o filamento na camada da letra.")
+            st.markdown("**Espaçamento e forma**")
+            st.slider("Espaço entre letras (mm)", -3.0, 3.0, step=0.1, key="espaco")
+            st.slider("Largura das letras (×)", 0.4, 1.5, step=0.02, key="largura")
+            st.slider("Engrossar traço (mm)", 0.0, 2.0, step=0.05, key="engrossar")
+            st.slider("Inclinação das letras (°)", 0.0, 15.0, step=0.5, key="inclinacao")
+            st.slider("Sobe e desce das letras (mm)", 0.0, 3.0, step=0.1, key="ondula")
+            st.slider("Arredondado da borda (mm)", 0.4, 3.0, step=0.1, key="raio")
+        else:
+            st.slider("Espessura da peça (mm)", 4.0, 20.0, step=0.1, key="espessura")
 
-        st.markdown("**Estilo das letras**")
-        st.radio("Modo", list(MODOS), key="modo", horizontal=True, label_visibility="collapsed")
-        if MODOS[st.session_state["modo"]] == "zigzag":
-            st.slider("Zig-zag: quanto sobe/desce (mm)", 0.2, 3.0, step=0.1, key="zigzag")
-        cc1, cc2 = st.columns(2)
-        modo_cores = MODOS[st.session_state["modo"]] == "cores"
-        cc1.color_picker("Cor A" if modo_cores else "Cor do filamento", key="cor_a")
-        cc2.color_picker("Cor B", key="cor_b", disabled=not modo_cores)
-        st.caption("Cada letra alterna A/B. No 3MF são duas partes (filamentos 1 e 2) para o AMS." if modo_cores
-                   else "Cor usada na prévia 3D. Use o modo 'Cores alternadas' para duas cores.")
-        st.selectbox("Corpo da letra", list(ESTILOS), key="estilo")
-        if ESTILOS[st.session_state["estilo"]] == "vazada":
-            st.slider("Espessura do contorno", 0.8, 6.0, step=0.1, key="borda")
-            st.slider("Fundo (0 = vazada)", 0.0, 4.0, step=0.1, key="fundo")
-        elif ESTILOS[st.session_state["estilo"]] == "base":
-            st.slider("Largura da borda", 0.8, 6.0, step=0.1, key="borda")
-            st.slider("Altura da borda", 1.0, 10.0, step=0.5, key="altura_borda")
+            st.markdown("**Estilo das letras**")
+            st.radio("Modo", list(MODOS), key="modo", horizontal=True, label_visibility="collapsed")
+            if MODOS[st.session_state["modo"]] == "zigzag":
+                st.slider("Zig-zag: quanto sobe/desce (mm)", 0.2, 3.0, step=0.1, key="zigzag")
+            cc1, cc2 = st.columns(2)
+            modo_cores = MODOS[st.session_state["modo"]] == "cores"
+            cc1.color_picker("Cor A" if modo_cores else "Cor do filamento", key="cor_a")
+            cc2.color_picker("Cor B", key="cor_b", disabled=not modo_cores)
+            st.caption("Cada letra alterna A/B. No 3MF são duas partes (filamentos 1 e 2) para o AMS." if modo_cores
+                       else "Cor usada na prévia 3D. Use o modo 'Cores alternadas' para duas cores.")
+            st.selectbox("Corpo da letra", list(ESTILOS), key="estilo")
+            if ESTILOS[st.session_state["estilo"]] == "vazada":
+                st.slider("Espessura do contorno", 0.8, 6.0, step=0.1, key="borda")
+                st.slider("Fundo (0 = vazada)", 0.0, 4.0, step=0.1, key="fundo")
+            elif ESTILOS[st.session_state["estilo"]] == "base":
+                st.slider("Largura da borda", 0.8, 6.0, step=0.1, key="borda")
+                st.slider("Altura da borda", 1.0, 10.0, step=0.5, key="altura_borda")
 
-        st.markdown("**Espaçamento e forma**")
-        st.slider("Espaço entre letras (mm)", -3.0, 3.0, step=0.1, key="espaco")
-        st.slider("Largura das letras (×)", 0.4, 1.5, step=0.02, key="largura")
-        st.slider("Engrossar traço (mm)", 0.0, 2.0, step=0.05, key="engrossar")
-        st.slider("Arredondado da borda (mm)", 0.4, 5.0, step=0.1, key="raio")
+            st.markdown("**Espaçamento e forma**")
+            st.slider("Espaço entre letras (mm)", -3.0, 3.0, step=0.1, key="espaco")
+            st.slider("Largura das letras (×)", 0.4, 1.5, step=0.02, key="largura")
+            st.slider("Engrossar traço (mm)", 0.0, 2.0, step=0.05, key="engrossar")
+            st.slider("Inclinação das letras (°)", 0.0, 15.0, step=0.5, key="inclinacao",
+                      help="Cada letra gira até este ângulo, alternando o sentido (letras 'dançando'). 0 = letras retas.")
+            st.slider("Sobe e desce das letras (mm)", 0.0, 3.0, step=0.1, key="ondula",
+                      help="Cada letra sobe ou desce até este valor em relação à linha. 0 = alinhadas.")
+            st.slider("Arredondado da borda (mm)", 0.4, 5.0, step=0.1, key="raio")
 
-        st.markdown("**Furo do lápis**")
-        st.selectbox("Tipo de lápis", list(core.PRESETS_LAPIS), key="tipo_lapis", on_change=_cb_tipo)
-        st.radio("Formato", list(core.FORMATOS_FURO), key="furo_formato", horizontal=True, on_change=_cb_formato, label_visibility="collapsed")
-        st.slider("Medida do furo (mm)", 4.0, 14.0, step=0.05, key="furo", help="Circular: diâmetro · Hexagonal: entre faces · Triangular: altura")
-        st.slider("Folga extra (mm)", 0.0, 1.0, step=0.05, key="furo_folga")
-        st.slider("Posição vertical do furo (parede da base, mm)", 0.4, 3.0, step=0.1, key="parede_base")
-        st.slider("Girar furo (graus)", -180.0, 180.0, step=15.0, key="furo_rot")
-        if core.FORMATOS_FURO[st.session_state["furo_formato"]][0] == "triangular":
-            st.slider("Canto do triângulo (mm)", 0.2, 3.0, step=0.1, key="furo_canto")
+        if st.session_state["produto"] in ("Chaveiro (nome inteiro)", "Chaveiro com base de contorno"):
+            st.markdown("**Argola do chaveiro**")
+            st.radio("Lado da argola", ["Esquerda", "Direita"], key="argola_lado", horizontal=True)
+            st.slider("Diâmetro externo da argola (mm)", 6.0, 20.0, step=0.5, key="argola_ext")
+            st.slider("Diâmetro do furo (mm)", 2.0, 8.0, step=0.1, key="argola_furo",
+                      help="4 a 5 mm serve para argola de chaveiro comum; fica um furo vertical atravessando a peça.")
+            if st.session_state["argola_ext"] - st.session_state["argola_furo"] < 3.0:
+                st.warning("Parede da argola fina (menos de 1,5 mm de cada lado): aumente o externo ou diminua o furo.")
+        elif st.session_state["produto"] == "Ponteira de lápis":
+            st.markdown("**Furo do lápis**")
+            st.selectbox("Tipo de lápis", list(core.PRESETS_LAPIS), key="tipo_lapis", on_change=_cb_tipo)
+            st.radio("Formato", list(core.FORMATOS_FURO), key="furo_formato", horizontal=True, on_change=_cb_formato, label_visibility="collapsed")
+            st.slider("Medida do furo (mm)", 4.0, 14.0, step=0.05, key="furo", help="Circular: diâmetro · Hexagonal: entre faces · Triangular: altura")
+            st.slider("Folga extra (mm)", 0.0, 1.0, step=0.05, key="furo_folga")
+            st.slider("Posição vertical do furo (parede da base, mm)", 0.4, 3.0, step=0.1, key="parede_base")
+            st.slider("Girar furo (graus)", -180.0, 180.0, step=15.0, key="furo_rot")
+            if core.FORMATOS_FURO[st.session_state["furo_formato"]][0] == "triangular":
+                st.slider("Canto do triângulo (mm)", 0.2, 3.0, step=0.1, key="furo_canto")
 
         st.markdown("**Enfeites (todos os nomes)**")
         st.selectbox("Antes do nome", ROTULOS_ENFEITE, key="enf_antes")
@@ -603,7 +668,7 @@ with col_dir:
                     for o in pecas_geo[k][3]:
                         c = dict(o)
                         c["x"], c["y"] = float(x), float(y)
-                        c["cor"] = cores[o["idx"]] if MODOS[st.session_state["modo"]] == "cores" else cores[0]
+                        c["cor"] = cores[o["idx"]] if (MODOS[st.session_state["modo"]] == "cores" or st.session_state["produto"] in ("Corrente articulada", "Chaveiro com base de contorno")) else cores[0]
                         objs_cena.append(c)
                 components.html(viz.html_visualizador(objs_cena, (256, 256), cores[0], 760, "escuro"), height=780)
                 a1, a2, a3, a4 = st.columns(4)

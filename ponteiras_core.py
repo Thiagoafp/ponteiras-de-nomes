@@ -35,11 +35,11 @@ QUALIDADE = {"Rascunho (rápido)": 0.20, "Normal": 0.10, "Alta (profissional)": 
 @dataclass
 class Params:
     fonte: str = os.path.join(FONTS_DIR, "ARLRDBD.TTF")
-    altura: float = 11.5        # altura da letra maiúscula (mm)
-    espessura: float = 10.9     # espessura da peça (mm)
-    raio: float = 2.2           # arredondado da borda de cima (mm)
-    engrossar: float = 0.45     # engrossa o traço (mm por lado)
-    espaco: float = -0.6        # espaço extra entre letras (mm; negativo junta as letras)
+    altura: float = 12.0        # altura da letra maiúscula (mm)
+    espessura: float = 10.0     # espessura da peça (mm)
+    raio: float = 1.0           # arredondado da borda de cima (mm)
+    engrossar: float = 0.7      # engrossa o traço (mm por lado)
+    espaco: float = -1.0        # espaço extra entre letras (mm; negativo junta as letras)
     furo_formato: str = "circular"  # circular | hexagonal | triangular (triângulo abaloado)
     furo: float = 8.0           # medida do furo (mm): circular = diâmetro; hexagonal = entre faces; triangular = altura (da face ao canto oposto)
     furo_folga: float = 0.0     # folga extra somada à medida (mm). Use 0,2–0,3 se a medida acima for a do LÁPIS
@@ -55,10 +55,27 @@ class Params:
     dois_lados: bool = False    # nome legível nos dois lados: metade de cima normal, metade de baixo espelhada (ao girar o lápis 180° lê-se de pé)
     modo: str = "uniforme"      # uniforme | zigzag (letras com alturas alternadas) | cores (cada letra alterna cor A/B para o AMS)
     zigzag: float = 1.0         # modo zigzag: quanto as letras pares sobem e as ímpares descem (mm)
-    largura: float = 0.72       # 1.0 = largura normal da fonte; <1 comprime as letras (o original é condensado)
+    largura: float = 0.9        # 1.0 = largura normal da fonte; <1 comprime as letras (o original é condensado)
     ponte: float = 2.4          # largura das pontes que ligam letras/acentos soltos (mm)
     base_arredondada: bool = False
     voxel: float = 0.10         # resolução (mm)
+    produto: str = "ponteira"   # ponteira (furo do lápis atravessando o nome) | chaveiro (argola com furo na ponta, sem furo de lápis)
+    argola_ext: float = 11.0    # chaveiro: diâmetro externo da argola (mm)
+    argola_furo: float = 4.5    # chaveiro: diâmetro do furo da argola (mm)
+    argola_lado: str = "esquerda"   # chaveiro: esquerda | direita
+    elo_largo: float = 15.0     # corrente: comprimento de cada elo (mm)
+    elo_ancho: float = 12.0     # corrente: largura do elo (mm)
+    elo_alto: float = 6.0       # corrente: altura/espessura do elo (mm)
+    elo_espaco: float = 1.0     # corrente: vão entre elos (mm)
+    elo_forma: str = "quadrado"  # corrente: quadrado (cantos e arestas arredondados) | reto (bloco com chanfro, como o modelo original)
+    elo_canto: float = 3.0      # corrente quadrado: raio dos cantos vistos de cima (mm)
+    elo_borda: float = 1.0      # corrente quadrado: arredondado das arestas de cima e de baixo (mm)
+    elo_primeiro: bool = True   # corrente: argola (pino) na primeira peça, para pendurar
+    elo_ultimo: bool = False    # corrente: argola também na última peça (pulseira)
+    base_alt: float = 2.0       # chaveiro com base de contorno: espessura da base (mm); a letra sobe `relevo` acima dela
+    relevo: float = 1.0         # corrente: relevo da letra (negativo = afundada)
+    inclinacao: float = 6.0     # cada letra gira até ±este ângulo (graus), alternando o sentido (efeito "letras dançando")
+    ondula: float = 0.8         # cada letra sobe/desce até este valor (mm) da linha
 
 
 # ----------------------------------------------------------------------------- fontes
@@ -276,6 +293,9 @@ def mascara(texto, p):
     return m, yc
 
 
+_PADRAO_BALANCO = [1.0, -0.7, 0.5, -1.0, 0.8, -0.4, 0.9, -0.8]
+
+
 def mascara_rotulada(texto, p):
     """Como mascara(), mas devolve também, para cada coluna da máscara, o índice da letra/símbolo a que ela pertence
     (usado no modo 'cores', que alterna a cor por letra). Modo 'zigzag': letras pares mais altas e ímpares mais baixas.
@@ -336,12 +356,28 @@ def mascara_rotulada(texto, p):
         x += adv + track
     img = Image.new("L", (int(x) + 2 * pad + int(size), int(size * 2) + 2 * pad), 0)
     d = ImageDraw.Draw(img)
+    n_d = 0
     for it in itens:
         if it[0] == "img":
             _, gx, mi, dy = it
             img.paste(255, (int(pad + gx), int(pad + dy)), Image.fromarray((mi * 255).astype(np.uint8)))
         else:
             _, gx, ch, fnt, dx, dy = it
+            if (p.inclinacao or p.ondula) and not ch.isspace():
+                k_v = _PADRAO_BALANCO[n_d % len(_PADRAO_BALANCO)]
+                n_d += 1
+                ang = p.inclinacao * k_v
+                dyo = p.ondula / res * _PADRAO_BALANCO[(n_d * 3 + 1) % len(_PADRAO_BALANCO)]
+                L = int(size * 2)
+                tmp = Image.new("L", (L, L), 0)
+                ImageDraw.Draw(tmp).text((L / 4 + dx, L / 4 + dy), ch, font=fnt, fill=255)
+                bb_t = tmp.getbbox()
+                if bb_t:
+                    cx = (bb_t[0] + bb_t[2]) / 2
+                    cy = cap_top0 + L / 4 + cap_h / 2           # gira em torno do meio das maiúsculas
+                    tmp = tmp.rotate(ang, resample=Image.BICUBIC, center=(cx, cy))
+                    img.paste(255, (int(pad + gx - L / 4), int(pad - L / 4 + dyo)), tmp)
+                continue
             d.text((pad + gx + dx, pad + dy), ch, font=fnt, fill=255)
     k = 1.0
     if abs(p.largura - 1.0) > 1e-3:
@@ -357,15 +393,42 @@ def mascara_rotulada(texto, p):
     if len(ys) == 0:
         raise ValueError(f"A fonte não tem glifos para '{texto}'")
     m = _ligar(m, p)
+    off_x = 0
+    if p.produto == "chaveiro":
+        m, off_x = _argola(m, p, (cap_top + cap_bot) / 2)
+        m = _ligar(m, Params(**{**asdict(p), "ponte": max(p.ponte, 0.5 * p.argola_ext)}))   # ligação larga: o chaveiro puxa por aqui
     ys, xs = np.where(m)
     y0, y1, x0, x1 = ys.min() - 2, ys.max() + 3, xs.min() - 2, xs.max() + 3
     m = m[y0:y1, x0:x1]
     centro_linha = (cap_top + cap_bot) / 2 - y0            # linhas a partir do topo
     yc = (m.shape[0] - centro_linha) * res
-    starts = np.array([(pad + g) * k for g in inicios]) - x0
+    starts = np.array([(pad + g) * k + off_x for g in inicios]) - x0
     cols = np.arange(m.shape[1])
     rot = np.clip(np.searchsorted(starts, cols, side="right") - 1, 0, None) if len(starts) else np.zeros(len(cols), int)
     return m, yc, rot
+
+
+def _argola(m, p, cy):
+    """Chaveiro: acrescenta à máscara uma argola (disco com furo) colada na primeira (ou última) letra, na altura do meio das maiúsculas.
+    Devolve (máscara, deslocamento_em_colunas_à_esquerda)."""
+    res = p.voxel
+    R, r = p.argola_ext / 2 / res, p.argola_furo / 2 / res
+    sol = 2.0 / res                                       # quanto a argola entra na letra
+    extra = int(np.ceil(2 * R)) + 6
+    esq = p.argola_lado != "direita"
+    m = np.pad(m, ((0, 0), (extra, 0) if esq else (0, extra)))
+    off = extra if esq else 0
+    xs = np.where(m.any(axis=0))[0]
+    cx = xs.min() - R + sol if esq else xs.max() + R - sol
+    borda = xs.min() if esq else xs.max()                 # a argola acompanha onde a letra de ponta realmente está (T, L, A...)
+    faixa = m[:, borda:borda + int(3.0 / res)] if esq else m[:, borda - int(3.0 / res):borda + 1]
+    linhas = np.where(faixa.any(axis=1))[0]
+    if len(linhas):
+        cy = float(np.clip(linhas.mean(), cy - 4.0 / res, cy + 4.0 / res))
+    yy, xx = np.ogrid[:m.shape[0], :m.shape[1]]
+    d2 = (xx - cx) ** 2 + (yy - cy) ** 2
+    m = (m | (d2 <= R ** 2)) & ~(d2 <= r ** 2)
+    return m, off
 
 
 def _ligar(m, p):
@@ -491,7 +554,7 @@ def ocupacao(m, yc, p, rot=None):
         yc = yc + pad * res
         if rot is not None:
             rot = np.pad(rot, pad, mode="edge")
-    if p.dois_lados:
+    if p.dois_lados and p.produto != "chaveiro":
         # deixa a máscara simétrica em torno do eixo do furo, para o espelho (de cabeça para baixo) cair no lugar certo
         H = m.shape[0]
         rc = H - yc / res                                # linha do eixo, contada a partir do topo
@@ -524,12 +587,14 @@ def ocupacao(m, yc, p, rot=None):
         return o
 
     occ = corpo(m)
-    if p.dois_lados:
+    if p.dois_lados and p.produto != "chaveiro":
         occ_b = corpo(m[::-1])                           # metade de baixo: o mesmo nome virado de cabeça para baixo
         occ = np.where((z >= p.espessura / 2)[None, None, :], occ, occ_b)
     occ = np.flip(occ, 0).transpose(1, 0, 2)              # (x=colunas, y=linhas invertidas, z); linha 0 = topo -> y máximo
     nx, ny, nz = occ.shape
     y = (np.arange(ny) + 0.5) * res
+    if p.produto == "chaveiro":                             # chaveiro: o furo é o da argola (já está na máscara)
+        return (occ, rot) if rot is not None else occ
     zc = furo_centro_z(p)                                   # altura do eixo do furo
     ymin, ymax, zmin, zmax = furo_limites(p)
     H = ny * res
@@ -580,7 +645,7 @@ def previa(texto, p, largura=760):
     # faixa do furo do lápis (vista de cima): linhas tracejadas em azul
     lin = m.shape[0] - int(round(yc / res))
     ymin_f, ymax_f, _, _ = furo_limites(q)
-    for ylin in (lin - int(round(ymax_f / res)), lin - int(round(ymin_f / res))):
+    for ylin in (() if q.produto == "chaveiro" else (lin - int(round(ymax_f / res)), lin - int(round(ymin_f / res)))):
         if 0 <= ylin < m.shape[0]:
             rgb[ylin, ::6] = (30, 90, 220)
             rgb[min(ylin + 1, m.shape[0] - 1), ::6] = (30, 90, 220)
@@ -692,7 +757,7 @@ def seguro(n):
 
 
 def chave(nome, p):
-    h = hashlib.md5(repr((p.fonte, p.altura, p.espessura, p.raio, p.engrossar, p.espaco, p.base_arredondada, p.voxel, p.furo, p.furo_formato, p.furo_folga, p.furo_rot, p.furo_canto, p.parede_base, p.largura, p.ponte, p.estilo, p.borda, p.fundo, p.altura_borda, p.modo, p.zigzag, nome, _assinatura_imagens(nome), 8)).encode()).hexdigest()[:6]
+    h = hashlib.md5(repr((p.fonte, p.altura, p.espessura, p.raio, p.engrossar, p.espaco, p.base_arredondada, p.voxel, p.furo, p.furo_formato, p.furo_folga, p.furo_rot, p.furo_canto, p.parede_base, p.largura, p.ponte, p.estilo, p.borda, p.fundo, p.altura_borda, p.modo, p.zigzag, p.inclinacao, p.ondula, p.produto, p.elo_largo, p.elo_ancho, p.elo_alto, p.elo_espaco, p.elo_forma, p.elo_canto, p.elo_borda, p.base_alt, p.elo_primeiro, p.elo_ultimo, p.relevo, p.argola_ext, p.argola_furo, p.argola_lado, nome, _assinatura_imagens(nome), 8)).encode()).hexdigest()[:6]
     return f"{seguro(nome)}_{h}"
 
 
@@ -714,6 +779,30 @@ def gerar_stls(nomes_params, saida, log=print, refazer=False):
             log(f"  {nome}: já gerado (cache)")
             continue
         log(f"  {nome}: desenhando letras...")
+        if p.produto == "tag":                      # chaveiro com base de contorno: base (cor A) + letras (cor B)
+            base, letras, res_c = tag_occ(nome, p)
+            v, fc = malha_skimage(base | letras, res_c)
+            gravar_stl(os.path.join(stl, k + ".stl"), v, fc)
+            for suf, oc in (("_A", base), ("_B", letras)):
+                if oc.any():
+                    v2, f2 = malha_skimage(oc, res_c, ALVO_TRIS // 2)
+                    gravar_stl(os.path.join(stl, k + suf + ".stl"), v2, f2)
+            log(f"  OK {nome}: chaveiro com base, {len(fc)} triângulos")
+            del base, letras
+            continue
+        if p.produto == "corrente":                 # um elo por letra: base (cor A) + letras (cor B), imprime montada
+            base, letras, res_c = corrente_occ(nome, p)
+            nel = max(1, len(_elementos(nome, listar_imagens())))
+            alvo = max(ALVO_TRIS, 40000 * nel)
+            v, fc = malha_skimage(base | letras, res_c, alvo=alvo)
+            gravar_stl(os.path.join(stl, k + ".stl"), v, fc)
+            for suf, oc, al in (("_A", base, alvo), ("_B", letras, max(ALVO_TRIS, 12000 * nel))):
+                if oc.any():
+                    v2, f2 = malha_skimage(oc, res_c, alvo=al)
+                    gravar_stl(os.path.join(stl, k + suf + ".stl"), v2, f2)
+            log(f"  OK {nome}: corrente de {nel} elo(s), {len(fc)} triângulos")
+            del base, letras
+            continue
         if p.modo == "cores":                       # duas cores alternadas por letra: STL da união + parte A + parte B
             m, yc, rot = mascara_rotulada(nome, p)
             occ, rotf = ocupacao(m, yc, p, rot)
@@ -796,7 +885,7 @@ NS = ('xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" '
       'xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p"')
 
 
-def escrever_3mf(arq, itens, geo, rotulo, partes=None):
+def escrever_3mf(arq, itens, geo, rotulo, partes=None, material="PLA"):
     """itens: [(chave,x,y)]; rotulo[chave]=nome de exibição. partes[chave] = [(v, f, extrusor)] para peças de várias cores
     (um objeto com várias partes, cada uma no seu filamento)."""
     partes = partes or {}
@@ -863,7 +952,7 @@ def escrever_3mf(arq, itens, geo, rotulo, partes=None):
                 '\n  <plate>\n    <metadata key="plater_id" value="1"/>\n    <metadata key="plater_name" value="Plate 1"/>\n    <metadata key="locked" value="false"/>\n    <metadata key="filament_map_mode" value="Auto For Flush"/>\n' +
                 "\n".join(inst) + "\n  </plate>\n  <assemble>\n  </assemble>\n</config>")
     if os.path.exists(BASE_CFG):
-        zf.write(BASE_CFG, "Metadata/project_settings.config")
+        zf.writestr("Metadata/project_settings.config", config_material(material))
     zf.close()
 
 
@@ -880,7 +969,7 @@ def compor_nome(nome, antes="", depois=""):
     return f"{antes}{nome.strip()}{depois}"
 
 
-def gerar_tudo(itens, saida, log=print, refazer=False, pasta_pedido=None, detalhes=None):
+def gerar_tudo(itens, saida, log=print, refazer=False, pasta_pedido=None, detalhes=None, material="PLA"):
     """itens: [(nome, qtd, Params[, rotulo])]. O nome pode conter enfeites (ex.: ':coracao:ANA:coracao:').
     Gera STLs e pratos 3MF. Retorna a lista de arquivos 3MF. Se `detalhes` (dict) for passado, recebe: pratos, geo, rotulo, stl."""
     os.makedirs(saida, exist_ok=True)
@@ -906,7 +995,7 @@ def gerar_tudo(itens, saida, log=print, refazer=False, pasta_pedido=None, detalh
         v = v - mn
         geo[k] = (v, f, v.max(0))
         rotulo[k] = rotulos[k]
-        if p.modo == "cores":                       # partes A e B no mesmo referencial (mesma origem da peça inteira)
+        if p.modo == "cores" or p.produto in ("corrente", "tag"):   # partes A e B no mesmo referencial (mesma origem da peça inteira)
             lst = []
             for suf, ext in (("_A", 1), ("_B", 2)):
                 arq_p = os.path.join(stl, k + suf + ".stl")
@@ -926,7 +1015,7 @@ def gerar_tudo(itens, saida, log=print, refazer=False, pasta_pedido=None, detalh
     os.makedirs(destino, exist_ok=True)
     for i, pr in enumerate(pratos, 1):
         arq = os.path.join(destino, f"Ponteiras_prato_{i}.3mf")
-        escrever_3mf(arq, pr, geo, rotulo, partes)
+        escrever_3mf(arq, pr, geo, rotulo, partes, material)
         arqs.append(arq)
         log(f"prato {i}: {len(pr)} peça(s) -> {arq}")
     return arqs
@@ -1104,6 +1193,16 @@ def partes_rapidas(texto, p, voxel=0.2, alvo=15000):
     """Malha rápida para a prévia 3D, separada por cor quando o modo é 'cores'.
     Retorna [(vertices, faces, indice_da_cor)] no mesmo referencial (origem no canto mínimo da peça inteira)."""
     q = replace(p, voxel=max(p.voxel, voxel))
+    if q.produto in ("corrente", "tag"):
+        base, letras, rc = corrente_occ(texto, q, res=0.15) if q.produto == "corrente" else tag_occ(texto, q)
+        vu, _ = malha_skimage(base | letras, rc, alvo)
+        mn = vu.min(0)
+        out = []
+        for i, oc in enumerate((base, letras)):
+            if oc.any():
+                v2, f2 = malha_skimage(oc, rc, alvo if i == 0 else alvo // 2)
+                out.append((v2 - mn, f2, i))
+        return out
     if q.modo != "cores":
         v, f = malha_rapida(texto, q, voxel, alvo)
         return [(v, f, 0)]
@@ -1171,3 +1270,220 @@ def ler_lista_nomes(conteudo, nome_arquivo, so_primeiro_nome=False):
         qtd = int(float(c[1])) if len(c) > 1 and c[1].replace(".", "", 1).isdigit() else 1
         out.append((nome, max(1, qtd), c[2] if len(c) > 2 and c[2] else None, c[3] if len(c) > 3 and c[3] else None))
     return out
+
+
+# ----------------------------------------------------------------------------- material do filamento
+# Valores de partida (faixas usuais dos fabricantes) aplicados sobre o perfil P1S do seu projeto (PLA Bambu = base).
+# chaves por material: temperatura do bico (normal/1ª camada), mesa (placa texturizada/1ª camada), ventoinha, vazão máxima (mm³/s), velocidades.
+MATERIAIS = {
+    "PLA": dict(tipo="PLA", nome="Bambu PLA Basic @BBL P1S 0.4 nozzle", fab="Bambu Lab", bico=220, bico1=220, mesa=55, mesa1=55, fan_min=100, fan_max=100, fan_off=1,
+                vazao=21, dens=1.26, faixa=(190, 240), camada_lenta=4, nota="Perfil Bambu PLA Basic do seu projeto."),
+    "PLA+": dict(tipo="PLA", nome="Generic PLA+ @BBL P1S 0.4 nozzle", fab="Generic", bico=225, bico1=225, mesa=55, mesa1=55, fan_min=100, fan_max=100, fan_off=1,
+                 vazao=18, dens=1.24, faixa=(190, 245), camada_lenta=4, nota="PLA+ costuma pedir 5 °C a mais e fluxo um pouco menor."),
+    "PETG": dict(tipo="PETG", nome="Generic PETG @BBL P1S 0.4 nozzle", fab="Generic", bico=250, bico1=255, mesa=70, mesa1=70, fan_min=30, fan_max=60, fan_off=3,
+                 vazao=10, dens=1.27, faixa=(220, 270), camada_lenta=8, vel=(120, 180, 180), nota="PETG: ventoinha baixa, fluxo menor e mais lento; use cola na PEI."),
+    "ABS": dict(tipo="ABS", nome="Generic ABS @BBL P1S 0.4 nozzle", fab="Generic", bico=270, bico1=270, mesa=90, mesa1=90, fan_min=10, fan_max=30, fan_off=3,
+                vazao=16, dens=1.04, faixa=(240, 280), camada_lenta=6, nota="ABS: imprima com a tampa da P1S fechada; cola na PEI; cheira e empena."),
+    "ASA": dict(tipo="ASA", nome="Generic ASA @BBL P1S 0.4 nozzle", fab="Generic", bico=265, bico1=265, mesa=90, mesa1=90, fan_min=10, fan_max=30, fan_off=3,
+                vazao=16, dens=1.07, faixa=(240, 280), camada_lenta=6, nota="ASA: como o ABS, com tampa fechada."),
+    "TPU": dict(tipo="TPU", nome="Generic TPU @BBL P1S 0.4 nozzle", fab="Generic", bico=230, bico1=230, mesa=45, mesa1=45, fan_min=60, fan_max=100, fan_off=1,
+                vazao=3.6, dens=1.22, faixa=(200, 250), camada_lenta=10, vel=(40, 50, 50), nota="TPU: bem lento; não passe pelo AMS (use o carretel externo)."),
+}
+
+
+def config_material(material="PLA"):
+    """Devolve o project_settings.config (JSON) com a temperatura/ventoinha/vazão do material escolhido."""
+    import json
+    if material == "PLA":
+        return open(BASE_CFG, "rb").read()        # o perfil do seu projeto já é PLA: não mexe em nada
+    cfg = json.load(open(BASE_CFG, encoding="utf-8"))
+    m = MATERIAIS.get(material) or MATERIAIS["PLA"]
+
+    def pôr(chave, valor):
+        if chave in cfg:
+            cfg[chave] = [str(valor)] * len(cfg[chave]) if isinstance(cfg[chave], list) else str(valor)
+
+    pôr("filament_type", m["tipo"])
+    pôr("filament_settings_id", m["nome"])
+    pôr("default_filament_profile", m["nome"])
+    pôr("filament_vendor", m["fab"])
+    pôr("nozzle_temperature", m["bico"])
+    pôr("nozzle_temperature_initial_layer", m["bico1"])
+    pôr("nozzle_temperature_range_low", m["faixa"][0])
+    pôr("nozzle_temperature_range_high", m["faixa"][1])
+    for chave in ("textured_plate_temp", "hot_plate_temp", "supertack_plate_temp"):
+        pôr(chave, m["mesa"])
+        pôr(chave + "_initial_layer", m["mesa1"])
+    pôr("cool_plate_temp", 35 if m["tipo"] in ("PLA", "TPU") else 0)
+    pôr("cool_plate_temp_initial_layer", 35 if m["tipo"] in ("PLA", "TPU") else 0)
+    pôr("fan_min_speed", m["fan_min"])
+    pôr("fan_max_speed", m["fan_max"])
+    pôr("overhang_fan_speed", m["fan_max"])
+    pôr("close_fan_the_first_x_layers", m["fan_off"])
+    pôr("slow_down_layer_time", m["camada_lenta"])
+    pôr("filament_density", m["dens"])
+    if m["tipo"] != "PLA":
+        pôr("filament_max_volumetric_speed", m["vazao"])
+        pôr("additional_cooling_fan_speed", 0 if m["tipo"] in ("ABS", "ASA") else 40)
+    else:
+        pôr("filament_max_volumetric_speed", m["vazao"])
+    if "vel" in m:
+        ext, inte, enc = m["vel"]
+        pôr("outer_wall_speed", ext)
+        pôr("inner_wall_speed", inte)
+        pôr("sparse_infill_speed", enc)
+        pôr("initial_layer_speed", 25)
+    return json.dumps(cfg, ensure_ascii=False, indent=4).encode("utf-8")
+
+
+# chaveiro: valores de partida (nome grande e fino, argola colada na primeira letra)
+CHAVEIRO = dict(altura=24.0, espessura=4.0, raio=1.2, engrossar=0.9, espaco=-1.2, largura=1.0, inclinacao=4.0, ondula=0.6)
+
+
+# ----------------------------------------------------------------------------- corrente articulada (um elo por letra, imprime montada)
+# Mesma ideia mecânica das correntes "llavero": cada elo tem, à esquerda, uma cavidade com um pino (eixo na largura) e, à direita,
+# uma argola que abraça o pino do elo seguinte. Folga radial de 0,5 mm entre pino e argola. Geometria própria (calculada aqui).
+CORRENTE = dict(altura=10.0, relevo=1.0, elo_largo=15.0, elo_ancho=12.0, elo_alto=6.0, elo_espaco=1.0)
+
+_PINO_D, _ANEL_EXT, _ANEL_INT, _ANEL_ALT, _CAVIDADE_D, _CAVIDADE_P, _SEPARACAO, _SUPORTE_L, _SUPORTE_A, _CHAFLAN = 2.0, 6.0, 3.0, 4.0, 10.0, 5.5, 2.0, 2.0, 1.0, 1.0
+
+
+def _glifo_corrente(el, p, res):
+    """Máscara 2D (linhas de cima p/ baixo) da letra/símbolo/imagem `el` = (tipo, valor), já recortada no seu retângulo; letra de `p.altura` mm."""
+    tipo, val = el
+    cap_px = p.altura / res
+    if tipo == "img":
+        return _mascara_imagem(val, int(round(cap_px * 1.1)))
+    ch = val
+    if ch.isspace():
+        return None
+    f0 = ImageFont.truetype(p.fonte, 200)
+    bb = f0.getbbox("H")
+    size = max(8, int(round(200 * cap_px / (bb[3] - bb[1]))))
+    f = ImageFont.truetype(p.fonte, size)
+    if not _tem_glifo(f, ch):
+        for r in (_fonte_reserva(c, 200) for c in _fontes_reserva()):
+            if _tem_glifo(r, ch):
+                l, t, rr, bt = r.getbbox(ch)
+                f = _fonte_reserva(r.path, max(8, int(round(200 * cap_px * 1.05 / max(1, bt - t)))))
+                break
+    l, t, rr, bt = f.getbbox(ch)
+    img = Image.new("L", (rr - l + 8, bt - t + 8), 0)
+    ImageDraw.Draw(img).text((4 - l, 4 - t), ch, font=f, fill=255)
+    m = np.asarray(img) > 127
+    ys, xs = np.where(m)
+    if len(ys) == 0:
+        return None
+    return m[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+
+
+def corrente_occ(nome, p, res=None):
+    """Volumes (base, letras) da corrente: bool (x, y, z). Origem em 0 no primeiro elo."""
+    res = res or min(p.voxel, 0.1)
+    elementos = [e for e in _elementos(nome, listar_imagens())]
+    n = len(elementos)
+    L, W, H = p.elo_largo, p.elo_ancho, p.elo_alto
+    larg = [L - 2 if (i == 0 and not p.elo_primeiro) else L for i in range(n)]
+    pos = [0.0]
+    for i in range(1, n):
+        pos.append(pos[-1] + larg[i - 1] + p.elo_espaco)
+    folga = _SEPARACAO + _ANEL_EXT / 2 + 1.0
+    total = pos[-1] + larg[-1] + (folga if p.elo_ultimo else 0.5)
+    xo = 1.0                                              # margem à esquerda
+    NX, NY, NZ = int((total + xo + 1) / res), int(W / res) + 2, int((H + abs(p.relevo) + 1) / res) + 2
+    X = ((np.arange(NX) + 0.5) * res - xo)[:, None, None]
+    Y = ((np.arange(NY) + 0.5) * res - res)[None, :, None]
+    Z = ((np.arange(NZ) + 0.5) * res)[None, None, :]
+    base = np.zeros((NX, NY, NZ), bool)
+    letras = np.zeros((NX, NY, NZ), bool)
+    yc, zc = W / 2, H / 2
+    for i, el in enumerate(elementos):
+        ix0 = max(0, int((pos[i] - 2.0 + xo) / res))
+        ix1 = min(NX, int((pos[i] + larg[i] + _SEPARACAO + _ANEL_EXT / 2 + 1.0 + xo) / res) + 2)
+        x = X[ix0:ix1] - pos[i]
+        la = larg[i]
+        tem_cav = i > 0 or p.elo_primeiro
+        tem_anel = i < n - 1 or p.elo_ultimo
+        if p.elo_forma == "quadrado":
+            rv = max(0.2, min(p.elo_borda, H / 2 - 0.1))
+            rc = max(rv, min(p.elo_canto, W / 2 - 0.1, la / 2 - 0.1))
+            qx, qy, qz = np.abs(x - la / 2) - (la / 2 - rv), np.abs(Y - yc) - (W / 2 - rv), np.abs(Z - zc) - (H / 2 - rv)
+            d3 = np.sqrt(np.maximum(qx, 0) ** 2 + np.maximum(qy, 0) ** 2 + np.maximum(qz, 0) ** 2) + np.minimum(np.maximum(np.maximum(qx, qy), qz), 0) - rv
+            qx2, qy2 = np.abs(x - la / 2) - (la / 2 - rc), np.abs(Y - yc) - (W / 2 - rc)
+            d2c = np.sqrt(np.maximum(qx2, 0) ** 2 + np.maximum(qy2, 0) ** 2) + np.minimum(np.maximum(qx2, qy2), 0) - rc
+            corpo = (d3 <= 0) & (d2c <= 0)
+        else:
+            corpo = (x >= 0) & (x < la) & (Y >= 0) & (Y <= W) & (Z >= 0) & (Z <= H)
+            corpo &= ~((x + Z) < _CHAFLAN) & ~((x + (H - Z)) < _CHAFLAN)         # chanfro da borda esquerda
+        if tem_cav:
+            cav = ((x ** 2 + (Z - zc) ** 2) <= (_CAVIDADE_D / 2) ** 2) & (np.abs(Y - yc) <= _CAVIDADE_P / 2)
+            corpo &= ~cav
+            corpo |= ((x - _PINO_D / 2) ** 2 + (Z - zc) ** 2 <= (_PINO_D / 2) ** 2) & (Y >= 0) & (Y <= W) & (x > -1)
+        if tem_anel:
+            cx = la + _SEPARACAO
+            d2 = (x - cx) ** 2 + (Z - zc) ** 2
+            anel = (d2 <= (_ANEL_EXT / 2) ** 2) & (d2 >= (_ANEL_INT / 2) ** 2) & (np.abs(Y - yc) <= _ANEL_ALT / 2)
+            sup = (x >= la - 0.5) & (x <= la + _SUPORTE_L) & (np.abs(Y - yc) <= _ANEL_ALT / 2) &                   (((Z >= zc + _ANEL_EXT / 2 - _SUPORTE_A) & (Z <= zc + _ANEL_EXT / 2)) | ((Z <= zc - _ANEL_EXT / 2 + _SUPORTE_A) & (Z >= zc - _ANEL_EXT / 2)))
+            corpo |= anel | sup
+        base[ix0:ix1] |= corpo
+        g = _glifo_corrente(el, p, res)
+        if g is not None and abs(p.relevo) > 0:
+            gh, gw = g.shape
+            cxl = pos[i] + ((la / 2 + 0.6) if (i == 0 and not p.elo_primeiro) else (L / 2 + 2))   # centro livre do elo
+            ix0 = int(round((cxl - gw * res / 2 + xo) / res))
+            iy0 = int(round((yc - gh * res / 2 + res) / res))
+            gm = np.flipud(g).T                                                  # (x, y) com y para cima
+            iz0 = int(round(H / res))
+            nz = int(round(abs(p.relevo) / res))
+            sub = np.zeros((NX, NY), bool)
+            xs0, xs1 = max(ix0, 0), min(ix0 + gm.shape[0], NX)
+            ys0, ys1 = max(iy0, 0), min(iy0 + gm.shape[1], NY)
+            if xs1 > xs0 and ys1 > ys0:
+                sub[xs0:xs1, ys0:ys1] = gm[xs0 - ix0:xs1 - ix0, ys0 - iy0:ys1 - iy0]
+            if p.relevo > 0:
+                letras[:, :, iz0:iz0 + nz] |= sub[:, :, None]
+            else:
+                letras[:, :, iz0 - nz:iz0] |= sub[:, :, None]
+    if p.relevo < 0:
+        base &= ~letras
+    return base, letras, res
+
+
+# ----------------------------------------------------------------------------- chaveiro com base de contorno
+# Base fina que segue o contorno do nome (a "borda" em volta das letras, com argola) + letras em relevo por cima, em outra cor.
+TAG = dict(altura=16.0, engrossar=0.6, espaco=-0.8, largura=1.0, raio=1.0, borda=2.0, base_alt=2.0, relevo=1.6, inclinacao=3.0, ondula=0.4)
+
+
+def tag_occ(nome, p):
+    """Volumes (base, letras) do chaveiro com base de contorno: bool (x, y, z), mesmo referencial."""
+    res = p.voxel
+    q = replace(p, produto="ponteira")
+    m, yc = mascara(nome, q)                              # letras (sem argola)
+    pad = int((p.borda + 2.0) / res) + 4
+    m = np.pad(m, pad)
+    yc = yc + pad * res
+    base = ndi.distance_transform_edt(~m) <= p.borda / res
+    base = ndi.binary_fill_holes(base)                    # miolos de O, A, B... ficam cobertos pela base
+    base = ndi.gaussian_filter(base.astype(float), 0.8 / res * 0.5) > 0.5
+    base = _ligar(base, replace(q, ponte=max(q.ponte, 2 * p.borda)))
+    cy = m.shape[0] - yc / res                            # linha do meio das maiúsculas
+    base, off = _argola(base, p, cy)
+    base = _ligar(base, replace(q, ponte=max(q.ponte, 0.5 * p.argola_ext)))
+    dx = base.shape[1] - m.shape[1]
+    m = np.pad(m, ((0, 0), (dx, 0) if p.argola_lado != "direita" else (0, dx)))
+    zb = (np.arange(max(2, int(round(p.base_alt / res)))) + 0.5) * res
+    rl = abs(p.relevo)
+    zl = (np.arange(max(2, int(round(rl / res)))) + 0.5) * res
+    db = ndi.distance_transform_edt(base) * res
+    gb = _perfil(zb, p.base_alt, min(p.raio, p.base_alt * 0.45), p)
+    ob = (db[:, :, None] >= np.maximum(gb, res * 0.5)[None, None, :]) & base[:, :, None]
+    dl = ndi.distance_transform_edt(m) * res
+    gl = _perfil(zl, rl, min(p.raio, rl * 0.6), p)
+    ol = (dl[:, :, None] >= np.maximum(gl, res * 0.5)[None, None, :]) & m[:, :, None]
+    nz = ob.shape[2] + ol.shape[2]
+    A = np.zeros(ob.shape[:2] + (nz,), bool)
+    B = np.zeros_like(A)
+    A[:, :, :ob.shape[2]] = ob
+    B[:, :, ob.shape[2]:] = ol
+    fx = lambda v: np.flip(v, 0).transpose(1, 0, 2)
+    return fx(A), fx(B), res

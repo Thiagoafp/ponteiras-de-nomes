@@ -41,10 +41,10 @@ class App(tk.Tk):
         self.itens = []            # [nome, qtd, fonte, furo, antes, depois]
         v = tk.DoubleVar
         self.var = {
-            "fonte": tk.StringVar(), "altura": v(value=11.5), "espessura": v(value=10.9), "raio": v(value=2.2),
-            "engrossar": v(value=0.45), "espaco": v(value=-0.6), "largura": v(value=0.72), "ponte": v(value=2.4),
+            "fonte": tk.StringVar(), "altura": v(value=12.0), "espessura": v(value=10.0), "raio": v(value=1.0),
+            "engrossar": v(value=0.7), "espaco": v(value=-1.0), "largura": v(value=0.9), "inclinacao": v(value=6.0), "ondula": v(value=0.8), "ponte": v(value=2.4),
             "estilo": tk.StringVar(value=list(ESTILOS)[0]), "borda": v(value=1.6), "fundo": v(value=1.0), "altura_borda": v(value=4.0),
-            "caixa": tk.StringVar(value="MAIÚSCULAS"), "dois_lados": tk.BooleanVar(value=False), "base_arredondada": tk.BooleanVar(value=False),
+            "caixa": tk.StringVar(value="MAIÚSCULAS"), "material": tk.StringVar(value="PLA"), "dois_lados": tk.BooleanVar(value=False), "base_arredondada": tk.BooleanVar(value=False),
             "enf_antes": tk.StringVar(value=NENHUM), "enf_depois": tk.StringVar(value=NENHUM),
             "tipo_lapis": tk.StringVar(value=list(core.PRESETS_LAPIS)[0]), "furo_formato": tk.StringVar(value="Circular"),
             "furo": v(value=8.0), "furo_folga": v(value=0.0), "furo_rot": v(value=0.0), "furo_canto": v(value=1.2),
@@ -157,6 +157,12 @@ class App(tk.Tk):
         ttk.Button(rb, text="Importar fonte...", command=self._importar_fonte).pack(side="left")
         ttk.Button(rb, text="Sugerir ajustes p/ esta fonte", command=self._sugerir).pack(side="left", padx=4)
 
+        pm = ttk.LabelFrame(dire, text="Impressão (Bambu Lab P1S)")
+        pm.pack(fill="x", pady=4)
+        ttk.Label(pm, text="Material do filamento").grid(row=0, column=0, sticky="w", padx=8, pady=4)
+        ttk.Combobox(pm, textvariable=self.var["material"], values=list(core.MATERIAIS), state="readonly", width=10).grid(row=0, column=1, sticky="w", pady=4)
+        ttk.Label(pm, text="Ajusta temperatura do bico/mesa, ventoinha e vazão no .3mf (valores de partida).", foreground="#666").grid(
+            row=1, column=0, columnspan=2, sticky="w", padx=8, pady=(0, 4))
         pc = ttk.LabelFrame(dire, text="Letras do nome")
         pc.pack(fill="x", pady=4)
         for i, rot in enumerate(CAIXAS):
@@ -186,6 +192,8 @@ class App(tk.Tk):
         self._slider(ps, "Arredondado da borda", "raio", 0.4, 5, 0.1)
         self._slider(ps, "Engrossar traço", "engrossar", 0, 2, 0.05)
         self._slider(ps, "Largura das letras (×)", "largura", 0.4, 1.5, 0.02)
+        self._slider(ps, "Inclinação das letras (°)", "inclinacao", 0, 15, 0.5)
+        self._slider(ps, "Sobe e desce das letras", "ondula", 0, 3, 0.1)
         self._slider(ps, "Espaço entre letras", "espaco", -3, 3, 0.1)
         self._slider(ps, "Largura das pontes", "ponte", 1, 5, 0.1)
         ttk.Checkbutton(ps, text="Arredondar também a base (evite)", variable=self.var["base_arredondada"]).pack(anchor="w", padx=6, pady=2)
@@ -290,7 +298,7 @@ class App(tk.Tk):
         fmt_nome = furo_nome if furo_nome in core.FORMATOS_FURO else v["furo_formato"].get()
         return core.Params(
             fonte=path, altura=float(v["altura"].get()), espessura=float(v["espessura"].get()), raio=float(v["raio"].get()),
-            engrossar=float(v["engrossar"].get()), espaco=float(v["espaco"].get()), largura=float(v["largura"].get()),
+            engrossar=float(v["engrossar"].get()), espaco=float(v["espaco"].get()), largura=float(v["largura"].get()), inclinacao=float(v["inclinacao"].get()), ondula=float(v["ondula"].get()),
             ponte=float(v["ponte"].get()), base_arredondada=bool(v["base_arredondada"].get()), caixa=CAIXAS[v["caixa"].get()], dois_lados=bool(v["dois_lados"].get()),
             estilo=ESTILOS[v["estilo"].get()], borda=float(v["borda"].get()), fundo=float(v["fundo"].get()),
             altura_borda=float(v["altura_borda"].get()),
@@ -626,7 +634,7 @@ class App(tk.Tk):
 
         def tarefa():
             try:
-                core.gerar_tudo(itens, SAIDA, log=lambda m: self.q.put(("log", m)), pasta_pedido=pedido)
+                core.gerar_tudo(itens, SAIDA, log=lambda m: self.q.put(("log", m)), pasta_pedido=pedido, material=self.var["material"].get())
                 self.q.put(("fim", pedido))
             except Exception as e:
                 self.q.put(("erro", str(e)))

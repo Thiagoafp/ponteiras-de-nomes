@@ -24,15 +24,34 @@ ap.add_argument("--lapis", choices=["comum", "jumbo"], default="comum", help="ti
 ap.add_argument("--gabarito", help='gera peça de teste de encaixe com furos dessas medidas, ex.: "7.0,7.2,7.4,7.6,7.8,8.0" (usa --furo-formato)')
 ap.add_argument("--altura", type=float, default=None, help="altura da letra maiúscula, mm")
 ap.add_argument("--espessura", type=float, default=None, help="espessura da peça, mm")
-ap.add_argument("--raio", type=float, default=2.2, help="arredondado da borda, mm")
-ap.add_argument("--engrossar", type=float, default=0.45, help="engrossa o traço, mm por lado")
-ap.add_argument("--espaco", type=float, default=-0.6, help="espaço extra entre letras, mm (negativo junta)")
+ap.add_argument("--raio", type=float, default=1.0, help="arredondado da borda, mm")
+ap.add_argument("--engrossar", type=float, default=0.7, help="engrossa o traço, mm por lado")
+ap.add_argument("--espaco", type=float, default=-1.0, help="espaço extra entre letras, mm (negativo junta)")
 ap.add_argument("--furo-formato", choices=["circular", "hexagonal", "triangular"], default="circular", help="formato do furo do lápis")
 ap.add_argument("--furo", type=float, default=None, help="medida do furo, mm (padrão: circular 8,0 · hexagonal 7,5 · triangular 7,5)")
 ap.add_argument("--furo-folga", type=float, default=0.0, help="folga extra somada à medida, mm")
 ap.add_argument("--furo-rot", type=float, default=0.0, help="giro do furo, graus")
 ap.add_argument("--furo-canto", type=float, default=1.2, help="raio dos cantos do triângulo, mm")
-ap.add_argument("--largura", type=float, default=0.72, help="compressão horizontal das letras (1 = normal)")
+ap.add_argument("--largura", type=float, default=0.9, help="compressão horizontal das letras (1 = normal)")
+ap.add_argument("--inclinacao", type=float, default=6.0, help="cada letra gira até este ângulo (graus), alternando o sentido; 0 = letras retas")
+ap.add_argument("--ondula", type=float, default=0.8, help="cada letra sobe/desce até este valor da linha, mm; 0 = alinhadas")
+ap.add_argument("--chaveiro", action="store_true", help="gera chaveiros (argola com furo na ponta, sem furo de lápis); usa tamanho/espessura de chaveiro")
+ap.add_argument("--tag", action="store_true", help="chaveiro com base de contorno: base fina em volta do nome + letras em relevo (filamento 2) + argola")
+ap.add_argument("--base-alt", type=float, default=2.0, help="tag: espessura da base, mm (a letra sobe --relevo acima dela; --borda = largura da base em volta)")
+ap.add_argument("--corrente", action="store_true", help="corrente articulada: um elo por letra (imprime montada); letra = filamento 2")
+ap.add_argument("--relevo", type=float, default=1.0, help="corrente: relevo da letra, mm (negativo = afundada)")
+ap.add_argument("--elo-largo", type=float, default=15.0, help="corrente: comprimento do elo, mm")
+ap.add_argument("--elo-ancho", type=float, default=12.0, help="corrente: largura do elo, mm")
+ap.add_argument("--elo-alto", type=float, default=6.0, help="corrente: altura do elo, mm")
+ap.add_argument("--elo-espaco", type=float, default=1.0, help="corrente: vão entre elos, mm")
+ap.add_argument("--elo-forma", choices=["quadrado", "reto"], default="quadrado", help="corrente: elo quadrado arredondado ou bloco reto com chanfro")
+ap.add_argument("--elo-canto", type=float, default=3.0, help="corrente quadrado: raio dos cantos, mm")
+ap.add_argument("--elo-borda", type=float, default=1.0, help="corrente quadrado: arredondado das arestas, mm")
+ap.add_argument("--elo-ultimo", action="store_true", help="corrente: argola também no último elo (pulseira)")
+ap.add_argument("--sem-pino", action="store_true", help="corrente: sem pino para argola no primeiro elo")
+ap.add_argument("--argola", type=float, default=11.0, help="chaveiro: diâmetro externo da argola, mm")
+ap.add_argument("--argola-furo", type=float, default=4.5, help="chaveiro: diâmetro do furo da argola, mm")
+ap.add_argument("--argola-lado", choices=["esquerda", "direita"], default="esquerda")
 ap.add_argument("--ponte", type=float, default=2.4, help="largura das pontes que ligam letras soltas, mm")
 ap.add_argument("--estilo", choices=["fechada", "vazada", "base"], default="fechada", help="fechada = letra sólida · vazada = só o contorno · base = borda em degrau em volta")
 ap.add_argument("--borda", type=float, default=1.6, help="vazada: espessura da parede do contorno; base: largura da borda, mm")
@@ -43,6 +62,7 @@ ap.add_argument("--modo", choices=["uniforme", "zigzag", "cores"], default="unif
 ap.add_argument("--zigzag", type=float, default=1.2, help="zigzag: quanto as letras sobem/descem, mm")
 ap.add_argument("--parede-base", type=float, default=1.0, help="posição vertical do furo: parede entre o furo e a base, mm")
 ap.add_argument("--caixa", choices=["maiusculas", "minusculas", "capitalizar", "digitado"], default="maiusculas", help="caixa das letras")
+ap.add_argument("--material", choices=list(core.MATERIAIS), default="PLA", help="material do filamento (ajusta temperaturas, ventoinha e vazão no 3MF)")
 ap.add_argument("--dois-lados", action="store_true", help="nome legível nos dois lados (frente e verso); precisa de suporte na impressão")
 ap.add_argument("--qualidade", choices=["rascunho", "normal", "alta"], default="normal")
 ap.add_argument("--base-arredondada", action="store_true")
@@ -56,13 +76,23 @@ if a.listar_fontes:
     sys.exit(0)
 
 _alt, _esp = core.aplicar_preset({'comum': 'Comum (lápis de 7 a 7,5 mm)', 'jumbo': 'Jumbo (lápis de 10 a 10,5 mm)'}[a.lapis])
+if a.chaveiro:                                       # valores de chaveiro, a menos que você tenha passado o seu
+    for _k, _v in core.CHAVEIRO.items():
+        if getattr(a, _k) is None or getattr(a, _k) == ap.get_default(_k):
+            setattr(a, _k, _v)
+if a.tag:
+    for _k, _v in core.TAG.items():
+        if getattr(a, _k) is None or getattr(a, _k) == ap.get_default(_k):
+            setattr(a, _k, _v)
+if a.corrente and a.altura is None:
+    a.altura = core.CORRENTE["altura"]
 if a.altura is None:
     a.altura = _alt
 if a.espessura is None:
     a.espessura = _esp
 vox = {"rascunho": 0.20, "normal": 0.10, "alta": 0.06}[a.qualidade]
 base = core.Params(fonte=core.resolver_fonte(a.fonte), altura=a.altura, espessura=a.espessura, raio=a.raio,
-                   engrossar=a.engrossar, espaco=a.espaco, furo=a.furo if a.furo is not None else dict(core.FORMATOS_FURO.values())[a.furo_formato], furo_formato=a.furo_formato, furo_folga=a.furo_folga, furo_rot=a.furo_rot, furo_canto=a.furo_canto, modo=a.modo, caixa=a.caixa, dois_lados=a.dois_lados, zigzag=a.zigzag, parede_base=a.parede_base, estilo=a.estilo, borda=a.borda, fundo=a.fundo, altura_borda=a.altura_borda, maiusculas=not a.manter_caixa, largura=a.largura, ponte=a.ponte, base_arredondada=a.base_arredondada, voxel=vox)
+                   engrossar=a.engrossar, espaco=a.espaco, furo=a.furo if a.furo is not None else dict(core.FORMATOS_FURO.values())[a.furo_formato], furo_formato=a.furo_formato, furo_folga=a.furo_folga, furo_rot=a.furo_rot, furo_canto=a.furo_canto, modo=a.modo, caixa=a.caixa, dois_lados=a.dois_lados, zigzag=a.zigzag, parede_base=a.parede_base, estilo=a.estilo, borda=a.borda, fundo=a.fundo, altura_borda=a.altura_borda, maiusculas=not a.manter_caixa, largura=a.largura, ponte=a.ponte, inclinacao=a.inclinacao, ondula=a.ondula, produto="tag" if a.tag else "corrente" if a.corrente else ("chaveiro" if a.chaveiro else "ponteira"), relevo=a.relevo, base_alt=a.base_alt, elo_largo=a.elo_largo, elo_ancho=a.elo_ancho, elo_alto=a.elo_alto, elo_espaco=a.elo_espaco, elo_ultimo=a.elo_ultimo, elo_forma=a.elo_forma, elo_canto=a.elo_canto, elo_borda=a.elo_borda, elo_primeiro=not a.sem_pino, argola_ext=a.argola, argola_furo=a.argola_furo, argola_lado=a.argola_lado, base_arredondada=a.base_arredondada, voxel=vox)
 itens = []
 if a.nomes:
     for parte in a.nomes.split(","):
@@ -104,5 +134,5 @@ def _params(f, fu):
 
 
 final = [(n, q, _params(f, fu)) for n, q, f, fu in itens]
-arqs = core.gerar_tudo(final, a.saida, refazer=a.refazer)
+arqs = core.gerar_tudo(final, a.saida, refazer=a.refazer, material=a.material)
 print("\nPronto! Abra os 3MF no Bambu Studio:", *arqs, sep="\n  ")
