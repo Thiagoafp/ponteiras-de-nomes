@@ -174,6 +174,45 @@ def linhas_validas(df):
     return out
 
 
+def _set_df(df):
+    """Troca a lista de nomes e recria a tabela (key nova) para não misturar com edições antigas."""
+    st.session_state.df = df.reset_index(drop=True)
+    st.session_state["ed_n"] = st.session_state.get("ed_n", 0) + 1
+
+
+def _df_vazio():
+    return pd.DataFrame({"Nome": pd.Series(dtype=str), "Qtd": pd.Series(dtype=int), "Fonte": pd.Series(dtype=str),
+                         "Furo": pd.Series(dtype=str), "Antes": pd.Series(dtype=str), "Depois": pd.Series(dtype=str)})
+
+
+def _cb_limpar():
+    _set_df(_df_vazio())
+    st.session_state["conf_limpar"] = False
+    st.session_state["rem_sel"] = []
+
+
+def _cb_remover():
+    sel = set(st.session_state.get("rem_sel", []))
+    df = st.session_state.df
+    _set_df(df.drop(index=[i for i in df.index if i in sel]))
+    st.session_state["rem_sel"] = []
+
+
+def _cb_vazias():
+    df = st.session_state.df
+    _set_df(df[df["Nome"].fillna("").astype(str).str.strip() != ""])
+
+
+def _cb_somar_repetidos():
+    df = st.session_state.df
+    df = df[df["Nome"].fillna("").astype(str).str.strip() != ""].copy()
+    df["_k"] = df["Nome"].astype(str).str.strip().str.upper()
+    qtd = df.groupby("_k")["Qtd"].apply(lambda q: int(pd.to_numeric(q, errors="coerce").fillna(1).sum()))
+    df = df.drop_duplicates("_k").copy()
+    df["Qtd"] = df["_k"].map(qtd)
+    _set_df(df.drop(columns="_k"))
+
+
 def _cb_reset():
     for k, v in DEF.items():
         if k not in ("fonte",):
@@ -296,7 +335,7 @@ def dialogo_simbolos():
         st.button("Aplicar troca", on_click=_cb_trocar)
     if st.button("➕ Adicionar à lista de nomes", type="primary", width="stretch"):
         nova = {"Nome": st.session_state["mont_nome"], "Qtd": 1, "Fonte": PADRAO, "Furo": PADRAO, "Antes": PADRAO, "Depois": PADRAO}
-        st.session_state.df = pd.concat([st.session_state.df, pd.DataFrame([nova])], ignore_index=True)
+        _set_df(pd.concat([st.session_state.df, pd.DataFrame([nova])], ignore_index=True))
         st.rerun()
 
 
@@ -374,7 +413,7 @@ def dialogo_salvos():
                 st.dataframe(pd.DataFrame(p["itens"]), hide_index=True, width="stretch")
                 c1, c2 = st.columns(2)
                 if c1.button("Carregar este pedido", key="ld" + p["id"]):
-                    st.session_state.df = pd.DataFrame(p["itens"])
+                    _set_df(pd.DataFrame(p["itens"]))
                     for k, v in p["ajustes"].items():
                         if k in DEF and (k != "fonte" or v in FONTES):
                             st.session_state[k] = v
@@ -473,7 +512,7 @@ with col_esq:
                         st.warning("Não achei nomes nesse arquivo.")
                     else:
                         base_df = pd.DataFrame(columns=novas.columns) if subst else st.session_state.df
-                        st.session_state.df = pd.concat([base_df, novas], ignore_index=True)
+                        _set_df(pd.concat([base_df, novas], ignore_index=True))
                         st.session_state["_msg_ok"] = f"{len(novas)} nome(s) importado(s)."
                         st.rerun()
                 except Exception as e:
@@ -491,8 +530,23 @@ with col_esq:
             "Depois": st.column_config.SelectboxColumn("Depois", options=[PADRAO] + ROTULOS_ENFEITE, default=PADRAO),
         }
         st.session_state.df = st.data_editor(st.session_state.df, column_config=cfg, column_order=ordem, num_rows="dynamic",
-                                             width="stretch", key="editor", hide_index=True)
+                                             width="stretch", key=f"editor_{st.session_state.get('ed_n', 0)}", hide_index=True)
         linhas = linhas_validas(st.session_state.df)
+        with st.expander(f"🧹 Gerenciar a lista ({len(linhas)} nome(s), {sum(l['Qtd'] for l in linhas)} peça(s))"):
+            _df = st.session_state.df
+            _rot = {i: f"{i + 1}. {str(_df.loc[i, 'Nome'])} × {int(_df.loc[i, 'Qtd']) if pd.notna(_df.loc[i, 'Qtd']) else 1}" for i in _df.index}
+            st.multiselect("Remover nomes", list(_rot), key="rem_sel", format_func=lambda i: _rot.get(i, str(i)), placeholder="Escolha os nomes a remover")
+            g1, g2 = st.columns(2)
+            g1.button("Remover selecionados", on_click=_cb_remover, disabled=not st.session_state.get("rem_sel"), width="stretch")
+            g2.button("Tirar linhas vazias", on_click=_cb_vazias, width="stretch")
+            st.button("Juntar nomes repetidos (soma as quantidades)", on_click=_cb_somar_repetidos, width="stretch")
+            if not st.session_state.get("conf_limpar"):
+                st.button("🗑️ Limpar a lista inteira", on_click=lambda: st.session_state.update(conf_limpar=True), width="stretch", disabled=_df.empty)
+            else:
+                st.warning(f"Apagar todos os {len(_df)} nomes da lista?")
+                k1, k2 = st.columns(2)
+                k1.button("Sim, apagar tudo", on_click=_cb_limpar, type="primary", width="stretch")
+                k2.button("Cancelar", on_click=lambda: st.session_state.update(conf_limpar=False), width="stretch")
         st.markdown("**Produto**")
         st.radio("Produto", list(PRODUTOS), key="produto", horizontal=True, on_change=_cb_produto, label_visibility="collapsed")
         st.markdown("**Impressão**")
