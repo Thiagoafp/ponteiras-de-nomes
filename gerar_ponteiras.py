@@ -44,7 +44,7 @@ ap.add_argument("--elo-largo", type=float, default=15.0, help="corrente: comprim
 ap.add_argument("--elo-ancho", type=float, default=12.0, help="corrente: largura do elo, mm")
 ap.add_argument("--elo-alto", type=float, default=6.0, help="corrente: altura do elo, mm")
 ap.add_argument("--elo-espaco", type=float, default=1.0, help="corrente: vão entre elos, mm")
-ap.add_argument("--elo-forma", choices=["quadrado", "reto"], default="quadrado", help="corrente: elo quadrado arredondado ou bloco reto com chanfro")
+ap.add_argument("--elo-forma", choices=["quadrado", "hexagono", "reto"], default="quadrado", help="corrente: elo quadrado arredondado, hexagonal (use --elo-largo 18) ou bloco reto com chanfro")
 ap.add_argument("--elo-canto", type=float, default=3.0, help="corrente quadrado: raio dos cantos, mm")
 ap.add_argument("--elo-borda", type=float, default=1.0, help="corrente quadrado: arredondado das arestas, mm")
 ap.add_argument("--elo-ultimo", action="store_true", help="corrente: argola também no último elo (pulseira)")

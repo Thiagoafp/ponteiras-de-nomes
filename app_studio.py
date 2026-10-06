@@ -144,7 +144,7 @@ def params_de(fonte_nome=None, furo_nome=None):
     return core.Params(
         fonte=FONTES.get(fn) or core.resolver_fonte(fn), altura=float(s["altura"]), espessura=float(s["espessura"]), raio=float(s["raio"]),
         engrossar=float(s["engrossar"]), espaco=float(s["espaco"]), produto=PRODUTOS[s["produto"]], relevo=float(s["relevo"]), base_alt=float(s["base_alt"]), elo_largo=float(s["elo_largo"]), elo_ancho=float(s["elo_ancho"]), elo_alto=float(s["elo_alto"]),
-        elo_espaco=float(s["elo_espaco"]), elo_forma="quadrado" if s["elo_forma"].startswith("Quadrado") else "reto", elo_canto=float(s["elo_canto"]), elo_borda=float(s["elo_borda"]), elo_primeiro=bool(s["elo_primeiro"]), elo_ultimo=bool(s["elo_ultimo"]), argola_ext=float(s["argola_ext"]), argola_furo=float(s["argola_furo"]),
+        elo_espaco=float(s["elo_espaco"]), elo_forma={"Q": "quadrado", "H": "hexagono"}.get(s["elo_forma"][0], "reto"), elo_canto=float(s["elo_canto"]), elo_borda=float(s["elo_borda"]), elo_primeiro=bool(s["elo_primeiro"]), elo_ultimo=bool(s["elo_ultimo"]), argola_ext=float(s["argola_ext"]), argola_furo=float(s["argola_furo"]),
         argola_lado=s["argola_lado"].lower(), largura=float(s["largura"]), inclinacao=float(s["inclinacao"]), ondula=float(s["ondula"]), ponte=float(s["ponte"]),
         caixa=CAIXAS[s["caixa"]], dois_lados=bool(s["dois_lados"]), modo=MODOS[s["modo"]], zigzag=float(s["zigzag"]), estilo=ESTILOS[s["estilo"]],
         borda=float(s["borda"]), fundo=float(s["fundo"]), altura_borda=float(s["altura_borda"]), parede_base=float(s["parede_base"]),
@@ -229,6 +229,13 @@ def _cb_produto():
     ps = {"Chaveiro (nome inteiro)": core.CHAVEIRO, "Corrente articulada": core.CORRENTE, "Chaveiro com base de contorno": core.TAG}.get(st.session_state["produto"])
     for k in set(core.CHAVEIRO) | set(core.CORRENTE) | set(core.TAG):
         st.session_state[k] = ps[k] if ps and k in ps else DEF[k]
+
+
+def _cb_forma_elo():
+    hexa = st.session_state["elo_forma"].startswith("Hexagonal")
+    st.session_state["elo_largo"] = 18.0 if hexa else 15.0
+    if hexa:
+        st.session_state["elo_canto"] = min(st.session_state["elo_canto"], 1.5)
 
 
 def _cb_formato():
@@ -575,13 +582,15 @@ with col_esq:
         corrente = st.session_state["produto"] == "Corrente articulada"
         if corrente:
             st.markdown("**Elos da corrente**")
-            st.radio("Forma do elo", ["Quadrado arredondado", "Reto (bloco com chanfro)"], key="elo_forma", horizontal=True)
-            if st.session_state["elo_forma"].startswith("Quadrado"):
-                st.slider("Cantos arredondados (mm)", 1.0, 6.0, step=0.5, key="elo_canto")
+            st.radio("Forma do elo", ["Quadrado arredondado", "Hexagonal", "Reto (bloco com chanfro)"], key="elo_forma", horizontal=True, on_change=_cb_forma_elo)
+            _hex = st.session_state["elo_forma"].startswith("Hexagonal")
+            if st.session_state["elo_forma"].startswith(("Quadrado", "Hexagonal")):
+                st.slider("Cantos arredondados (mm)", 0.5 if _hex else 1.0, 1.5 if _hex else 6.0, step=0.5, key="elo_canto")
                 st.slider("Arestas arredondadas (mm)", 0.2, 2.5, step=0.1, key="elo_borda")
             st.slider("Relevo da letra (mm)", -2.0, 3.0, step=0.1, key="relevo", help="Positivo = letra em relevo; negativo = letra afundada na peça.")
-            st.slider("Comprimento do elo (mm)", 10.0, 30.0, step=1.0, key="elo_largo")
-            st.slider("Largura do elo (mm)", 8.0, 20.0, step=1.0, key="elo_ancho")
+            st.slider("Tamanho do elo, face a face (mm)" if _hex else "Comprimento do elo (mm)", 12.0 if _hex else 10.0, 30.0, step=1.0, key="elo_largo")
+            if not _hex:
+                st.slider("Largura do elo (mm)", 8.0, 20.0, step=1.0, key="elo_ancho")
             st.slider("Altura do elo (mm)", 6.0, 12.0, step=0.5, key="elo_alto")
             st.slider("Vão entre elos (mm)", 0.5, 2.0, step=0.1, key="elo_espaco")
             st.checkbox("Pino para argola no primeiro elo (chaveiro)", key="elo_primeiro")

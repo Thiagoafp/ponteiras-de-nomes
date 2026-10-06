@@ -892,11 +892,10 @@ def escrever_3mf(arq, itens, geo, rotulo, partes=None, material="PLA"):
     zf = zipfile.ZipFile(arq, "w", zipfile.ZIP_DEFLATED)
     zf.writestr("[Content_Types].xml", '<?xml version="1.0" encoding="UTF-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>\n <Default Extension="png" ContentType="image/png"/>\n <Default Extension="gcode" ContentType="text/x.gcode"/>\n</Types>')
     zf.writestr("_rels/.rels", '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n</Relationships>')
-    chaves = sorted({k for k, _, _ in itens})
-    objs, rels, cont = {}, [], 0          # objs[k] = [(id_do_objeto, n_faces, extrusor)]
-    for k in chaves:
+    objs, rels, cont = {}, [], 0          # objs[n] = [(id_do_objeto, n_faces, extrusor)]; uma malha própria por peça (o Studio não abre malha repetida)
+    for n, (k, _, _) in enumerate(itens):
         lista = partes[k] if k in partes else [(geo[k][0], geo[k][1], 1)]
-        objs[k] = []
+        objs[n] = []
         for v, f, ext in lista:
             cont += 1
             x = ['<?xml version="1.0" encoding="UTF-8"?>\n<model unit="millimeter" xml:lang="en-US" %s>\n <metadata name="BambuStudio:3mfVersion">1</metadata>\n <resources>\n  <object id="%d" p:UUID="%08x-81cb-4c03-9d28-80fed5dfa1dc" type="model">\n   <mesh>\n    <vertices>' % (NS, cont, 0x10000 + cont)]
@@ -904,7 +903,7 @@ def escrever_3mf(arq, itens, geo, rotulo, partes=None, material="PLA"):
             x += ['     <triangle v1="%d" v2="%d" v3="%d"/>' % tuple(r) for r in f] + ["    </triangles>\n   </mesh>\n  </object>\n </resources>\n <build/>\n</model>"]
             zf.writestr("3D/Objects/object_%d.model" % cont, "\n".join(x))
             rels.append(' <Relationship Target="/3D/Objects/object_%d.model" Id="rel-%d" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>' % (cont, cont))
-            objs[k].append((cont, len(f), ext))
+            objs[n].append((cont, len(f), ext))
     zf.writestr("3D/_rels/3dmodel.model.rels", '<?xml version="1.0" encoding="UTF-8"?>\n<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n' + "\n".join(rels) + "\n</Relationships>")
     base = cont
     res, build, objcfg, inst = [], [], [], []
@@ -913,11 +912,11 @@ def escrever_3mf(arq, itens, geo, rotulo, partes=None, material="PLA"):
         nm = escape(rotulo[k])
         comps = "\n".join(
             f'    <component p:path="/3D/Objects/object_{cid}.model" objectid="{cid}" p:UUID="{0x200 + n * 8 + j:08x}-b206-40ff-9872-83e8017abed1" transform="1 0 0 0 1 0 0 0 1 0 0 0"/>'
-            for j, (cid, _, _) in enumerate(objs[k]))
+            for j, (cid, _, _) in enumerate(objs[n]))
         res.append(f'  <object id="{oid}" p:UUID="{0x100 + n:08x}-61cb-4c03-9d28-80fed5dfa1dc" type="model">\n   <components>\n{comps}\n   </components>\n  </object>')
         build.append(f'  <item objectid="{oid}" p:UUID="{0x300 + n:08x}-b1ec-4553-aec9-835e5b724bb4" transform="1 0 0 0 1 0 0 0 1 {x:.4f} {y:.4f} 0" printable="1"/>')
         pts = "\n".join(f'''    <part id="{cid}" subtype="normal_part">
-      <metadata key="name" value="{nm}{'' if len(objs[k]) == 1 else ' - cor ' + 'AB'[j % 2]}"/>
+      <metadata key="name" value="{nm}{'' if len(objs[n]) == 1 else ' - cor ' + 'AB'[j % 2]}"/>
       <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>
       <metadata key="source_object_id" value="0"/>
       <metadata key="source_volume_id" value="{j}"/>
@@ -926,11 +925,11 @@ def escrever_3mf(arq, itens, geo, rotulo, partes=None, material="PLA"):
       <metadata key="source_offset_z" value="0"/>
       <metadata key="extruder" value="{ext}"/>
       <mesh_stat face_count="{nf}" edges_fixed="0" degenerate_facets="0" facets_removed="0" facets_reversed="0" backwards_edges="0"/>
-    </part>''' for j, (cid, nf, ext) in enumerate(objs[k]))
+    </part>''' for j, (cid, nf, ext) in enumerate(objs[n]))
         objcfg.append(f'''  <object id="{oid}">
     <metadata key="name" value="{nm}"/>
     <metadata key="extruder" value="1"/>
-    <metadata face_count="{sum(nf for _, nf, _ in objs[k])}"/>
+    <metadata face_count="{sum(nf for _, nf, _ in objs[n])}"/>
 {pts}
   </object>''')
         inst.append(f'    <model_instance>\n      <metadata key="object_id" value="{oid}"/>\n      <metadata key="instance_id" value="0"/>\n      <metadata key="identify_id" value="{1000 + n}"/>\n    </model_instance>')
@@ -1383,6 +1382,8 @@ def corrente_occ(nome, p, res=None):
     elementos = [e for e in _elementos(nome, listar_imagens())]
     n = len(elementos)
     L, W, H = p.elo_largo, p.elo_ancho, p.elo_alto
+    if p.elo_forma == "hexagono":
+        W = max(W, L * 2 / np.sqrt(3))                    # hexágono com lados planos virados para os vizinhos: largura = vértice a vértice
     larg = [L - 2 if (i == 0 and not p.elo_primeiro) else L for i in range(n)]
     pos = [0.0]
     for i in range(1, n):
@@ -1404,7 +1405,19 @@ def corrente_occ(nome, p, res=None):
         la = larg[i]
         tem_cav = i > 0 or p.elo_primeiro
         tem_anel = i < n - 1 or p.elo_ultimo
-        if p.elo_forma == "quadrado":
+        lim_pino = True
+        if p.elo_forma == "hexagono":
+            xr, yr = np.abs(x[:, :, 0] - la / 2), np.abs(Y[0, :, 0][None, :] - yc)           # (nx, ny)
+            m2 = np.maximum(xr, 0.5 * xr + (np.sqrt(3) / 2) * yr) <= la / 2
+            rc = max(0.2, min(p.elo_canto, la / 3, 1.5))                                       # cantos pequenos: a parede ao lado do pino precisa de material
+            nuc = ndi.distance_transform_edt(m2) * res > rc                                    # abertura: arredonda os cantos do hexágono
+            m2 = ndi.distance_transform_edt(~nuc) * res <= rc
+            d2 = ndi.distance_transform_edt(m2) * res
+            rv = max(0.2, min(p.elo_borda, H / 2 - 0.1))
+            g = _perfil(Z[0, 0, :], H, rv, p)
+            corpo = (d2[:, :, None] >= np.maximum(g, res * 0.5)[None, None, :]) & m2[:, :, None] & (Z <= H)
+            lim_pino = m2[:, :, None]                                                       # o pino só existe onde há parede (não sai do hexágono)
+        elif p.elo_forma == "quadrado":
             rv = max(0.2, min(p.elo_borda, H / 2 - 0.1))
             rc = max(rv, min(p.elo_canto, W / 2 - 0.1, la / 2 - 0.1))
             qx, qy, qz = np.abs(x - la / 2) - (la / 2 - rv), np.abs(Y - yc) - (W / 2 - rv), np.abs(Z - zc) - (H / 2 - rv)
@@ -1418,7 +1431,7 @@ def corrente_occ(nome, p, res=None):
         if tem_cav:
             cav = ((x ** 2 + (Z - zc) ** 2) <= (_CAVIDADE_D / 2) ** 2) & (np.abs(Y - yc) <= _CAVIDADE_P / 2)
             corpo &= ~cav
-            corpo |= ((x - _PINO_D / 2) ** 2 + (Z - zc) ** 2 <= (_PINO_D / 2) ** 2) & (Y >= 0) & (Y <= W) & (x > -1)
+            corpo |= ((x - _PINO_D / 2) ** 2 + (Z - zc) ** 2 <= (_PINO_D / 2) ** 2) & (Y >= 0) & (Y <= W) & (x > -1) & lim_pino
         if tem_anel:
             cx = la + _SEPARACAO
             d2 = (x - cx) ** 2 + (Z - zc) ** 2
