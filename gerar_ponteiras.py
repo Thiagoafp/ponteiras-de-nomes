@@ -36,6 +36,12 @@ ap.add_argument("--largura", type=float, default=0.9, help="compressão horizont
 ap.add_argument("--inclinacao", type=float, default=6.0, help="cada letra gira até este ângulo (graus), alternando o sentido; 0 = letras retas")
 ap.add_argument("--ondula", type=float, default=0.8, help="cada letra sobe/desce até este valor da linha, mm; 0 = alinhadas")
 ap.add_argument("--chaveiro", action="store_true", help="gera chaveiros (argola com furo na ponta, sem furo de lápis); usa tamanho/espessura de chaveiro")
+ap.add_argument("--marcador", action="store_true", help="marcador de páginas (clip) com nome e emoji de professor; 4 filamentos (base, letras, rosto, capelo)")
+ap.add_argument("--paleta", choices=list(core.PALETAS_MARCADOR), default="Menina", help="marcador: paleta de cores (Menina = base lilás · Menino = base azul)")
+ap.add_argument("--emoji", action="store_true", help="marcador: acrescenta o emoji de professor (capelo e óculos)")
+ap.add_argument("--livro-pos", choices=["inicio", "fim", "ambos", "nenhum"], default="inicio", help="marcador: onde fica o livrinho em relação ao nome")
+ap.add_argument("--marc-cores", type=int, choices=[2, 4], default=4, help="marcador: 2 filamentos (base + nome/emoji) ou 4 (base, letras, rosto, capelo)")
+ap.add_argument("--marc-comp", type=float, default=100.0, help="marcador: comprimento da haste do clip, mm")
 ap.add_argument("--tag", action="store_true", help="chaveiro com base de contorno: base fina em volta do nome + letras em relevo (filamento 2) + argola")
 ap.add_argument("--base-alt", type=float, default=2.0, help="tag: espessura da base, mm (a letra sobe --relevo acima dela; --borda = largura da base em volta)")
 ap.add_argument("--corrente", action="store_true", help="corrente articulada: um elo por letra (imprime montada); letra = filamento 2")
@@ -80,6 +86,12 @@ if a.chaveiro:                                       # valores de chaveiro, a me
     for _k, _v in core.CHAVEIRO.items():
         if getattr(a, _k) is None or getattr(a, _k) == ap.get_default(_k):
             setattr(a, _k, _v)
+if a.marcador:
+    for _k, _v in core.MARCADOR.items():
+        if getattr(a, _k) is None or getattr(a, _k) == ap.get_default(_k):
+            setattr(a, _k, _v)
+    if a.caixa == ap.get_default("caixa"):
+        a.caixa = "capitalizar"
 if a.tag:
     for _k, _v in core.TAG.items():
         if getattr(a, _k) is None or getattr(a, _k) == ap.get_default(_k):
@@ -92,7 +104,7 @@ if a.espessura is None:
     a.espessura = _esp
 vox = {"rascunho": 0.20, "normal": 0.10, "alta": 0.06}[a.qualidade]
 base = core.Params(fonte=core.resolver_fonte(a.fonte), altura=a.altura, espessura=a.espessura, raio=a.raio,
-                   engrossar=a.engrossar, espaco=a.espaco, furo=a.furo if a.furo is not None else dict(core.FORMATOS_FURO.values())[a.furo_formato], furo_formato=a.furo_formato, furo_folga=a.furo_folga, furo_rot=a.furo_rot, furo_canto=a.furo_canto, modo=a.modo, caixa=a.caixa, dois_lados=a.dois_lados, zigzag=a.zigzag, parede_base=a.parede_base, estilo=a.estilo, borda=a.borda, fundo=a.fundo, altura_borda=a.altura_borda, maiusculas=not a.manter_caixa, largura=a.largura, ponte=a.ponte, inclinacao=a.inclinacao, ondula=a.ondula, produto="tag" if a.tag else "corrente" if a.corrente else ("chaveiro" if a.chaveiro else "ponteira"), relevo=a.relevo, base_alt=a.base_alt, elo_largo=a.elo_largo, elo_ancho=a.elo_ancho, elo_alto=a.elo_alto, elo_espaco=a.elo_espaco, elo_ultimo=a.elo_ultimo, elo_forma=a.elo_forma, elo_canto=a.elo_canto, elo_borda=a.elo_borda, elo_primeiro=not a.sem_pino, argola_ext=a.argola, argola_furo=a.argola_furo, argola_lado=a.argola_lado, base_arredondada=a.base_arredondada, voxel=vox)
+                   engrossar=a.engrossar, espaco=a.espaco, furo=a.furo if a.furo is not None else dict(core.FORMATOS_FURO.values())[a.furo_formato], furo_formato=a.furo_formato, furo_folga=a.furo_folga, furo_rot=a.furo_rot, furo_canto=a.furo_canto, modo=a.modo, caixa=a.caixa, dois_lados=a.dois_lados, zigzag=a.zigzag, parede_base=a.parede_base, estilo=a.estilo, borda=a.borda, fundo=a.fundo, altura_borda=a.altura_borda, maiusculas=not a.manter_caixa, largura=a.largura, ponte=a.ponte, inclinacao=a.inclinacao, ondula=a.ondula, produto="marcador" if a.marcador else "tag" if a.tag else "corrente" if a.corrente else ("chaveiro" if a.chaveiro else "ponteira"), relevo=a.relevo, base_alt=a.base_alt, emoji=a.emoji, livro_pos=a.livro_pos, marc_cores=a.marc_cores, marc_comp=a.marc_comp, elo_largo=a.elo_largo, elo_ancho=a.elo_ancho, elo_alto=a.elo_alto, elo_espaco=a.elo_espaco, elo_ultimo=a.elo_ultimo, elo_forma=a.elo_forma, elo_canto=a.elo_canto, elo_borda=a.elo_borda, elo_primeiro=not a.sem_pino, argola_ext=a.argola, argola_furo=a.argola_furo, argola_lado=a.argola_lado, base_arredondada=a.base_arredondada, voxel=vox)
 itens = []
 if a.nomes:
     for parte in a.nomes.split(","):
@@ -134,5 +146,5 @@ def _params(f, fu):
 
 
 final = [(n, q, _params(f, fu)) for n, q, f, fu in itens]
-arqs = core.gerar_tudo(final, a.saida, refazer=a.refazer, material=a.material)
+arqs = core.gerar_tudo(final, a.saida, refazer=a.refazer, material=a.material, cores=(core.PALETAS_MARCADOR_2 if a.marc_cores == 2 else core.PALETAS_MARCADOR)[a.paleta] if a.marcador else None)
 print("\nPronto! Abra os 3MF no Bambu Studio:", *arqs, sep="\n  ")

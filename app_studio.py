@@ -100,12 +100,12 @@ OPCOES_ENFEITE = core.opcoes_enfeite()
 ENF = dict(OPCOES_ENFEITE)
 ROTULOS_ENFEITE = [r for r, _ in OPCOES_ENFEITE]
 
-PRODUTOS = {"Ponteira de lápis": "ponteira", "Chaveiro (nome inteiro)": "chaveiro", "Corrente articulada": "corrente", "Chaveiro com base de contorno": "tag"}
+PRODUTOS = {"Ponteira de lápis": "ponteira", "Chaveiro (nome inteiro)": "chaveiro", "Corrente articulada": "corrente", "Chaveiro com base de contorno": "tag", "Marcador de páginas (clip)": "marcador"}
 
 DEF = {
     "fonte": next((k for k in FONTES if k.lower().startswith(("lilita", "arial rounded", "poppins extra"))), next(iter(FONTES))),
     "altura": 12.0, "espessura": 10.0, "raio": 1.0, "engrossar": 0.7, "largura": 0.9, "inclinacao": 6.0, "ondula": 0.8, "espaco": -1.0, "ponte": 2.4,
-    "produto": "Ponteira de lápis", "base_alt": 2.0, "relevo": 1.0, "elo_largo": 15.0, "elo_ancho": 12.0, "elo_alto": 6.0, "elo_espaco": 1.0, "elo_primeiro": True, "elo_ultimo": False, "elo_forma": "Quadrado arredondado", "elo_canto": 3.0, "elo_borda": 1.0, "argola_ext": 11.0, "argola_furo": 4.5, "argola_lado": "Esquerda", "caixa": "MAIÚSCULAS", "material": "PLA", "dois_lados": False, "modo": "Uniforme", "zigzag": 1.2, "estilo": "Fechada", "borda": 1.6, "fundo": 1.0, "altura_borda": 4.0,
+    "produto": "Ponteira de lápis", "emoji": False, "livro_pos": "No início", "emoji_d": 18.0, "marc_larg": 25.2, "marc_comp": 100.0, "paleta": "Menina", "cor_c": core.PALETAS_MARCADOR["Menina"][2], "cor_d": core.PALETAS_MARCADOR["Menina"][3], "base_alt": 2.0, "relevo": 1.0, "elo_largo": 15.0, "elo_ancho": 12.0, "elo_alto": 6.0, "elo_espaco": 1.0, "elo_primeiro": True, "elo_ultimo": False, "elo_forma": "Quadrado arredondado", "elo_canto": 3.0, "elo_borda": 1.0, "argola_ext": 11.0, "argola_furo": 4.5, "argola_lado": "Esquerda", "caixa": "MAIÚSCULAS", "material": "PLA", "dois_lados": False, "modo": "Uniforme", "zigzag": 1.2, "estilo": "Fechada", "borda": 1.6, "fundo": 1.0, "altura_borda": 4.0,
     "tipo_lapis": list(core.PRESETS_LAPIS)[0], "furo_formato": "Circular", "furo": 8.0, "furo_folga": 0.0, "furo_rot": 0.0,
     "furo_canto": 1.2, "parede_base": 1.0, "qualidade": "Normal", "enf_antes": NENHUM, "enf_depois": NENHUM,
     "cor_a": "#2fd17b", "cor_b": "#ff8a1f", "opcoes_por_nome": False,
@@ -143,7 +143,7 @@ def params_de(fonte_nome=None, furo_nome=None):
     fmt_nome = furo_nome if furo_nome in core.FORMATOS_FURO else s["furo_formato"]
     return core.Params(
         fonte=FONTES.get(fn) or core.resolver_fonte(fn), altura=float(s["altura"]), espessura=float(s["espessura"]), raio=float(s["raio"]),
-        engrossar=float(s["engrossar"]), espaco=float(s["espaco"]), produto=PRODUTOS[s["produto"]], relevo=float(s["relevo"]), base_alt=float(s["base_alt"]), elo_largo=float(s["elo_largo"]), elo_ancho=float(s["elo_ancho"]), elo_alto=float(s["elo_alto"]),
+        engrossar=float(s["engrossar"]), espaco=float(s["espaco"]), produto=PRODUTOS[s["produto"]], relevo=float(s["relevo"]), base_alt=float(s["base_alt"]), emoji=bool(s["emoji"]), livro_pos={"No início": "inicio", "No fim": "fim", "Nas duas pontas": "ambos", "Sem livrinho": "nenhum"}[s["livro_pos"]], emoji_d=float(s["emoji_d"]), marc_larg=float(s["marc_larg"]), marc_comp=float(s["marc_comp"]), elo_largo=float(s["elo_largo"]), elo_ancho=float(s["elo_ancho"]), elo_alto=float(s["elo_alto"]),
         elo_espaco=float(s["elo_espaco"]), elo_forma={"Q": "quadrado", "H": "hexagono"}.get(s["elo_forma"][0], "reto"), elo_canto=float(s["elo_canto"]), elo_borda=float(s["elo_borda"]), elo_primeiro=bool(s["elo_primeiro"]), elo_ultimo=bool(s["elo_ultimo"]), argola_ext=float(s["argola_ext"]), argola_furo=float(s["argola_furo"]),
         argola_lado=s["argola_lado"].lower(), largura=float(s["largura"]), inclinacao=float(s["inclinacao"]), ondula=float(s["ondula"]), ponte=float(s["ponte"]),
         caixa=CAIXAS[s["caixa"]], dois_lados=bool(s["dois_lados"]), modo=MODOS[s["modo"]], zigzag=float(s["zigzag"]), estilo=ESTILOS[s["estilo"]],
@@ -226,9 +226,20 @@ def _cb_tipo():
 
 
 def _cb_produto():
-    ps = {"Chaveiro (nome inteiro)": core.CHAVEIRO, "Corrente articulada": core.CORRENTE, "Chaveiro com base de contorno": core.TAG}.get(st.session_state["produto"])
-    for k in set(core.CHAVEIRO) | set(core.CORRENTE) | set(core.TAG):
+    prod = st.session_state["produto"]
+    ps = {"Chaveiro (nome inteiro)": core.CHAVEIRO, "Corrente articulada": core.CORRENTE, "Chaveiro com base de contorno": core.TAG,
+          "Marcador de páginas (clip)": core.MARCADOR}.get(prod)
+    for k in set(core.CHAVEIRO) | set(core.CORRENTE) | set(core.TAG) | set(core.MARCADOR):
         st.session_state[k] = ps[k] if ps and k in ps else DEF[k]
+    st.session_state["caixa"] = "Primeira Maiúscula" if prod == "Marcador de páginas (clip)" else DEF["caixa"]
+    if prod == "Marcador de páginas (clip)":
+        _cb_paleta()
+
+
+def _cb_paleta():
+    pal = core.PALETAS_MARCADOR[st.session_state["paleta"]]
+    for k, v in zip(("cor_a", "cor_b", "cor_c", "cor_d"), pal):
+        st.session_state[k] = v
 
 
 def _cb_forma_elo():
@@ -438,7 +449,8 @@ if st.session_state.pop("_gerar_flag", False) and linhas:
         pasta = os.path.join(SAIDA, "web", st.session_state.sid, "pedido_" + time.strftime("%Y-%m-%d_%H%M%S"))
         det = {}
         with st.spinner("Gerando as peças na resolução final..."):
-            arqs = core.gerar_tudo(itens, SAIDA, log=lambda m: None, pasta_pedido=pasta, detalhes=det, material=st.session_state["material"])
+            arqs = core.gerar_tudo(itens, SAIDA, log=lambda m: None, pasta_pedido=pasta, detalhes=det, material=st.session_state["material"],
+                                   cores=[st.session_state[k] for k in ("cor_a", "cor_b", "cor_c", "cor_d")] if st.session_state["produto"] == "Marcador de páginas (clip)" else None)
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
             for a in arqs:
@@ -600,6 +612,27 @@ with col_esq:
             cc2.color_picker("Cor da letra", key="cor_b")
             st.caption("Cada elo é uma peça; imprimem montados (articulados). No 3MF o elo é o filamento 1 e a letra o filamento 2 (AMS). "
                        "Se a corrente travar, aumente o vão entre elos e imprima de novo.")
+        elif st.session_state["produto"] == "Marcador de páginas (clip)":
+            st.markdown("**Marcador de páginas**")
+            st.radio("Livrinho", ["No início", "No fim", "Nas duas pontas", "Sem livrinho"], key="livro_pos", horizontal=True)
+            st.checkbox("Também o emoji de professor (capelo e óculos)", key="emoji")
+            st.slider("Tamanho do livrinho / emoji (mm)", 12.0, 26.0, step=0.5, key="emoji_d")
+            st.slider("Largura em volta do nome (mm)", 1.0, 5.0, step=0.1, key="borda")
+            st.slider("Comprimento da haste do clip (mm)", 60.0, 140.0, step=5.0, key="marc_comp")
+            st.slider("Largura da haste (mm)", 18.0, 32.0, step=0.5, key="marc_larg")
+            st.slider("Relevo das letras e do emoji (mm)", 0.6, 2.5, step=0.1, key="relevo")
+            st.selectbox("Paleta", list(core.PALETAS_MARCADOR), key="paleta", on_change=_cb_paleta)
+            pc1, pc2, pc3, pc4 = st.columns(4)
+            pc1.color_picker("Base", key="cor_a")
+            pc2.color_picker("Letras", key="cor_b")
+            pc3.color_picker("Rosto", key="cor_c")
+            pc4.color_picker("Capelo", key="cor_d")
+            st.caption("4 filamentos no AMS: 1 base · 2 letras e boca · 3 rosto · 4 capelo e óculos. As cores aparecem no Bambu Studio já com a paleta.")
+            st.markdown("**Espaçamento e forma**")
+            st.slider("Espaço entre letras (mm)", -3.0, 3.0, step=0.1, key="espaco")
+            st.slider("Engrossar traço (mm)", 0.0, 2.0, step=0.05, key="engrossar")
+            st.slider("Inclinação das letras (°)", 0.0, 15.0, step=0.5, key="inclinacao")
+            st.slider("Sobe e desce das letras (mm)", 0.0, 3.0, step=0.1, key="ondula")
         elif st.session_state["produto"] == "Chaveiro com base de contorno":
             st.markdown("**Base de contorno**")
             st.slider("Largura da base em volta do nome (mm)", 1.0, 5.0, step=0.1, key="borda")
@@ -725,13 +758,13 @@ with col_dir:
                         fila += [k] * l["Qtd"]
                 fila = fila[:60]
                 prato = core.empacotar(fila, {k: g[:3] for k, g in pecas_geo.items()})[0]
-                cores = [st.session_state["cor_a"], st.session_state["cor_b"]]
+                cores = [st.session_state["cor_a"], st.session_state["cor_b"], st.session_state["cor_c"], st.session_state["cor_d"]]
                 objs_cena = []
                 for k, x, y in prato:
                     for o in pecas_geo[k][3]:
                         c = dict(o)
                         c["x"], c["y"] = float(x), float(y)
-                        c["cor"] = cores[o["idx"]] if (MODOS[st.session_state["modo"]] == "cores" or st.session_state["produto"] in ("Corrente articulada", "Chaveiro com base de contorno")) else cores[0]
+                        c["cor"] = cores[o["idx"]] if (MODOS[st.session_state["modo"]] == "cores" or st.session_state["produto"] in ("Corrente articulada", "Chaveiro com base de contorno", "Marcador de páginas (clip)")) else cores[0]
                         objs_cena.append(c)
                 components.html(viz.html_visualizador(objs_cena, (256, 256), cores[0], 760, "escuro"), height=780)
                 a1, a2, a3, a4 = st.columns(4)

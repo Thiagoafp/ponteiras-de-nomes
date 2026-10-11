@@ -56,6 +56,7 @@ class Params:
     modo: str = "uniforme"      # uniforme | zigzag (letras com alturas alternadas) | cores (cada letra alterna cor A/B para o AMS)
     zigzag: float = 1.0         # modo zigzag: quanto as letras pares sobem e as ímpares descem (mm)
     largura: float = 0.9        # 1.0 = largura normal da fonte; <1 comprime as letras (o original é condensado)
+    ligar_letras: bool = True   # liga letras/acentos soltos com pontes (False: deixa o espaço entre palavras; o chaveiro com base já une tudo pela base)
     ponte: float = 2.4          # largura das pontes que ligam letras/acentos soltos (mm)
     base_arredondada: bool = False
     voxel: float = 0.10         # resolução (mm)
@@ -72,6 +73,19 @@ class Params:
     elo_borda: float = 1.0      # corrente quadrado: arredondado das arestas de cima e de baixo (mm)
     elo_primeiro: bool = True   # corrente: argola (pino) na primeira peça, para pendurar
     elo_ultimo: bool = False    # corrente: argola também na última peça (pulseira)
+    emblema: str = ""           # marcador: caminho de uma imagem (brasão/logo redondo) para usar no lugar do nome
+    emblema_d: float = 55.0     # marcador: diâmetro do emblema (mm)
+    marc_cores: int = 4         # marcador: 4 filamentos (base, letras, rosto, capelo) ou 2 (base + nome/emoji; boca e óculos viram vazados)
+    livro_pos: str = "inicio"   # marcador: livrinho aberto no inicio | fim | ambos | nenhum
+    emoji: bool = False         # marcador: emoji de professor (capelo + óculos) antes do nome
+    emoji_d: float = 18.0       # marcador: diâmetro do rosto do emoji (mm)
+    marc_larg: float = 25.2     # marcador: largura da haste do clip (mm)
+    marc_braco: float = 4.8     # marcador: largura de cada braço da moldura da haste (mm)
+    marc_fenda: float = 2.2     # marcador: fenda entre a moldura e a lingueta (mm)
+    marc_cab_alt: float = 23.0  # marcador singelo: altura da cabeça com a logo (mm); 36 mantém a proporção original da logo (18 x 23) em 28 mm de largura
+    marc_cab: float = 28.0      # marcador singelo: largura da cabeça com a logo (mm); a base segue o formato da logo
+    marc_clip: float = 28.0     # marcador singelo: comprimento da parte do clip (moldura em U com lingueta), de baixo para cima (mm)
+    marc_comp: float = 100.0    # marcador: comprimento da haste abaixo do nome (mm)
     base_alt: float = 2.0       # chaveiro com base de contorno: espessura da base (mm); a letra sobe `relevo` acima dela
     relevo: float = 1.0         # corrente: relevo da letra (negativo = afundada)
     inclinacao: float = 6.0     # cada letra gira até ±este ângulo (graus), alternando o sentido (efeito "letras dançando")
@@ -271,7 +285,8 @@ def _fonte_reserva(caminho, tamanho):
     return f
 
 
-def _desenha(font, ch, tam=90):
+def _desenha(font, ch, tam=None):
+    tam = tam or max(90, int(getattr(font, "size", 60) * 1.1))      # a tela acompanha o tamanho da fonte (letras grandes saíam da tela fixa e viravam "glifo ausente")
     im = Image.new("L", (tam * 2, tam * 2), 0)
     ImageDraw.Draw(im).text((10, 10), ch, font=font, fill=255)
     return np.asarray(im)
@@ -392,7 +407,8 @@ def mascara_rotulada(texto, p):
     ys, xs = np.where(m)
     if len(ys) == 0:
         raise ValueError(f"A fonte não tem glifos para '{texto}'")
-    m = _ligar(m, p)
+    if p.ligar_letras:
+        m = _ligar(m, p)
     off_x = 0
     if p.produto == "chaveiro":
         m, off_x = _argola(m, p, (cap_top + cap_bot) / 2)
@@ -756,8 +772,11 @@ def seguro(n):
     return re.sub(r"[^A-Za-z0-9]+", "_", t).strip("_").upper() or "NOME"
 
 
+GEO_VERSAO = 5        # sobe quando a geometria muda (marcador: haste presa ao bloco do nome); invalida os STLs em cache
+
+
 def chave(nome, p):
-    h = hashlib.md5(repr((p.fonte, p.altura, p.espessura, p.raio, p.engrossar, p.espaco, p.base_arredondada, p.voxel, p.furo, p.furo_formato, p.furo_folga, p.furo_rot, p.furo_canto, p.parede_base, p.largura, p.ponte, p.estilo, p.borda, p.fundo, p.altura_borda, p.modo, p.zigzag, p.inclinacao, p.ondula, p.produto, p.elo_largo, p.elo_ancho, p.elo_alto, p.elo_espaco, p.elo_forma, p.elo_canto, p.elo_borda, p.base_alt, p.elo_primeiro, p.elo_ultimo, p.relevo, p.argola_ext, p.argola_furo, p.argola_lado, nome, _assinatura_imagens(nome), 8)).encode()).hexdigest()[:6]
+    h = hashlib.md5(repr((p.fonte, p.altura, p.espessura, p.raio, p.engrossar, p.espaco, p.base_arredondada, p.voxel, p.furo, p.furo_formato, p.furo_folga, p.furo_rot, p.furo_canto, p.parede_base, p.largura, p.ponte, p.estilo, p.borda, p.fundo, p.altura_borda, p.modo, p.zigzag, p.inclinacao, p.ondula, p.produto, p.elo_largo, p.elo_ancho, p.elo_alto, p.elo_espaco, p.ligar_letras, p.elo_forma, p.elo_canto, p.elo_borda, p.base_alt, p.emblema, p.emblema_d, p.marc_cores, p.livro_pos, p.emoji, p.emoji_d, p.marc_larg, p.marc_braco, p.marc_fenda, p.marc_cab, p.marc_cab_alt, p.marc_clip, p.marc_comp, p.elo_primeiro, p.elo_ultimo, p.relevo, p.argola_ext, p.argola_furo, p.argola_lado, nome, _assinatura_imagens(nome), 8, GEO_VERSAO)).encode()).hexdigest()[:6]
     return f"{seguro(nome)}_{h}"
 
 
@@ -779,6 +798,19 @@ def gerar_stls(nomes_params, saida, log=print, refazer=False):
             log(f"  {nome}: já gerado (cache)")
             continue
         log(f"  {nome}: desenhando letras...")
+        if p.produto == "marcador":                 # marcador de páginas: base + letras/boca + rosto + capelo/óculos (4 filamentos)
+            partes_m, res_c = marcador_occ(nome, p)
+            fino = res_c <= 0.06                              # voxel fino (0,05 mm): peça pequena com texto miúdo, mais triângulos para não perder o contorno
+            uni = np.logical_or.reduce(partes_m)
+            v, fc = malha_skimage(uni, res_c, 260000 if fino else ALVO_TRIS)
+            gravar_stl(os.path.join(stl, k + ".stl"), v, fc)
+            for i, oc in enumerate(partes_m, 1):
+                if oc.any():
+                    v2, f2 = malha_skimage(oc, res_c, 160000 if fino else ALVO_TRIS // 2)
+                    gravar_stl(os.path.join(stl, k + f"_P{i}.stl"), v2, f2)
+            log(f"  OK {nome}: marcador de páginas, {len(fc)} triângulos")
+            del partes_m, uni
+            continue
         if p.produto == "tag":                      # chaveiro com base de contorno: base (cor A) + letras (cor B)
             base, letras, res_c = tag_occ(nome, p)
             v, fc = malha_skimage(base | letras, res_c)
@@ -885,7 +917,7 @@ NS = ('xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" '
       'xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p"')
 
 
-def escrever_3mf(arq, itens, geo, rotulo, partes=None, material="PLA"):
+def escrever_3mf(arq, itens, geo, rotulo, partes=None, material="PLA", cores=None):
     """itens: [(chave,x,y)]; rotulo[chave]=nome de exibição. partes[chave] = [(v, f, extrusor)] para peças de várias cores
     (um objeto com várias partes, cada uma no seu filamento)."""
     partes = partes or {}
@@ -916,7 +948,7 @@ def escrever_3mf(arq, itens, geo, rotulo, partes=None, material="PLA"):
         res.append(f'  <object id="{oid}" p:UUID="{0x100 + n:08x}-61cb-4c03-9d28-80fed5dfa1dc" type="model">\n   <components>\n{comps}\n   </components>\n  </object>')
         build.append(f'  <item objectid="{oid}" p:UUID="{0x300 + n:08x}-b1ec-4553-aec9-835e5b724bb4" transform="1 0 0 0 1 0 0 0 1 {x:.4f} {y:.4f} 0" printable="1"/>')
         pts = "\n".join(f'''    <part id="{cid}" subtype="normal_part">
-      <metadata key="name" value="{nm}{'' if len(objs[n]) == 1 else ' - cor ' + 'AB'[j % 2]}"/>
+      <metadata key="name" value="{nm}{'' if len(objs[n]) == 1 else ' - cor ' + str(j + 1)}"/>
       <metadata key="matrix" value="1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1"/>
       <metadata key="source_object_id" value="0"/>
       <metadata key="source_volume_id" value="{j}"/>
@@ -951,7 +983,7 @@ def escrever_3mf(arq, itens, geo, rotulo, partes=None, material="PLA"):
                 '\n  <plate>\n    <metadata key="plater_id" value="1"/>\n    <metadata key="plater_name" value="Plate 1"/>\n    <metadata key="locked" value="false"/>\n    <metadata key="filament_map_mode" value="Auto For Flush"/>\n' +
                 "\n".join(inst) + "\n  </plate>\n  <assemble>\n  </assemble>\n</config>")
     if os.path.exists(BASE_CFG):
-        zf.writestr("Metadata/project_settings.config", config_material(material))
+        zf.writestr("Metadata/project_settings.config", config_material(material, cores, max([e for v in objs.values() for _, _, e in v] or [1])))
     zf.close()
 
 
@@ -968,7 +1000,7 @@ def compor_nome(nome, antes="", depois=""):
     return f"{antes}{nome.strip()}{depois}"
 
 
-def gerar_tudo(itens, saida, log=print, refazer=False, pasta_pedido=None, detalhes=None, material="PLA"):
+def gerar_tudo(itens, saida, log=print, refazer=False, pasta_pedido=None, detalhes=None, material="PLA", cores=None):
     """itens: [(nome, qtd, Params[, rotulo])]. O nome pode conter enfeites (ex.: ':coracao:ANA:coracao:').
     Gera STLs e pratos 3MF. Retorna a lista de arquivos 3MF. Se `detalhes` (dict) for passado, recebe: pratos, geo, rotulo, stl."""
     os.makedirs(saida, exist_ok=True)
@@ -994,6 +1026,16 @@ def gerar_tudo(itens, saida, log=print, refazer=False, pasta_pedido=None, detalh
         v = v - mn
         geo[k] = (v, f, v.max(0))
         rotulo[k] = rotulos[k]
+        if p.produto == "marcador":                 # partes 1..4 (filamentos) no mesmo referencial da peça inteira
+            lst = []
+            for i in range(1, 5):
+                arq_p = os.path.join(stl, k + f"_P{i}.stl")
+                if os.path.exists(arq_p):
+                    vp, fp = ler_stl(arq_p)
+                    lst.append((vp - mn, fp, i))
+            if len(lst) >= 2:
+                partes[k] = lst
+            continue
         if p.modo == "cores" or p.produto in ("corrente", "tag"):   # partes A e B no mesmo referencial (mesma origem da peça inteira)
             lst = []
             for suf, ext in (("_A", 1), ("_B", 2)):
@@ -1014,7 +1056,7 @@ def gerar_tudo(itens, saida, log=print, refazer=False, pasta_pedido=None, detalh
     os.makedirs(destino, exist_ok=True)
     for i, pr in enumerate(pratos, 1):
         arq = os.path.join(destino, f"Ponteiras_prato_{i}.3mf")
-        escrever_3mf(arq, pr, geo, rotulo, partes, material)
+        escrever_3mf(arq, pr, geo, rotulo, partes, material, cores)
         arqs.append(arq)
         log(f"prato {i}: {len(pr)} peça(s) -> {arq}")
     return arqs
@@ -1192,6 +1234,17 @@ def partes_rapidas(texto, p, voxel=0.2, alvo=15000):
     """Malha rápida para a prévia 3D, separada por cor quando o modo é 'cores'.
     Retorna [(vertices, faces, indice_da_cor)] no mesmo referencial (origem no canto mínimo da peça inteira)."""
     q = replace(p, voxel=max(p.voxel, voxel))
+    if q.produto == "marcador":
+        q2 = replace(q, voxel=max(q.voxel, 0.2))
+        pm, rc = marcador_occ(texto, q2)
+        vu, _ = malha_skimage(np.logical_or.reduce(pm), rc, alvo)
+        mn = vu.min(0)
+        out = []
+        for i, oc in enumerate(pm):
+            if oc.any():
+                v2, f2 = malha_skimage(oc, rc, alvo if i == 0 else alvo // 3)
+                out.append((v2 - mn, f2, i))
+        return out
     if q.produto in ("corrente", "tag"):
         base, letras, rc = corrente_occ(texto, q, res=0.15) if q.produto == "corrente" else tag_occ(texto, q)
         vu, _ = malha_skimage(base | letras, rc, alvo)
@@ -1290,12 +1343,53 @@ MATERIAIS = {
 }
 
 
-def config_material(material="PLA"):
+def expandir_filamentos(cfg, n):
+    """Amplia o project_settings (1 filamento) para n filamentos, do mesmo jeito que o Bambu Studio salva um projeto com n cores."""
+    import json
+    if n <= 1:
+        return cfg
+    g = json.load(open(os.path.join(HERE, "base_bambu", "expansao_filamentos.json"), encoding="utf-8"))
+    for chave in g.get("x1", []):
+        if chave in cfg and len(cfg[chave]) == 1:
+            cfg[chave] = list(cfg[chave]) * n
+    for chave in g.get("x2", []):
+        if chave in cfg and len(cfg[chave]) == 2:
+            cfg[chave] = list(cfg[chave]) * n
+    for chave in g.get("x4", []):
+        if chave in cfg and len(cfg[chave]) == 4:
+            cfg[chave] = list(cfg[chave]) * n
+    for chave in g.get("n2", []):
+        if chave in cfg and len(cfg[chave]) == 1:
+            cfg[chave] = list(cfg[chave]) * (2 * n)
+    for chave in g.get("q", []):
+        cfg[chave] = ["0" if i // n == i % n else "200" for i in range(n * n)]
+    if "vec" in g and g["vec"] in cfg:
+        cfg[g["vec"]] = ["140"] * (2 * n)
+    return cfg
+
+
+COR_PADRAO = ["#FF9500", "#FFFFFF", "#FFD21F", "#2F6FE4", "#B58AE0", "#000000"]
+
+
+def config_material(material="PLA", cores=None, n=None):
     """Devolve o project_settings.config (JSON) com a temperatura/ventoinha/vazão do material escolhido."""
     import json
-    if material == "PLA":
+    nfil = max(len(cores or []), n or 1)
+    if material == "PLA" and not cores and nfil <= 1:
         return open(BASE_CFG, "rb").read()        # o perfil do seu projeto já é PLA: não mexe em nada
     cfg = json.load(open(BASE_CFG, encoding="utf-8"))
+    cfg = expandir_filamentos(cfg, nfil)
+    if nfil > 1 and not cores:
+        cores = COR_PADRAO[:nfil]
+    if cores:                                      # cores dos filamentos 1..N (aparecem no Bambu Studio)
+        cc = [c.upper() + "FF" if len(c) == 7 else c.upper() for c in cores]
+        for chave in ("filament_colour", "filament_multi_colour"):
+            if chave in cfg:
+                cfg[chave] = cc
+        if "filament_colour_type" in cfg:
+            cfg["filament_colour_type"] = ["0"] * len(cc)
+    if material == "PLA":
+        return json.dumps(cfg, ensure_ascii=False, indent=4).encode("utf-8")
     m = MATERIAIS.get(material) or MATERIAIS["PLA"]
 
     def pôr(chave, valor):
@@ -1470,8 +1564,8 @@ TAG = dict(altura=16.0, engrossar=0.6, espaco=-0.8, largura=1.0, raio=1.0, borda
 def tag_occ(nome, p):
     """Volumes (base, letras) do chaveiro com base de contorno: bool (x, y, z), mesmo referencial."""
     res = p.voxel
-    q = replace(p, produto="ponteira")
-    m, yc = mascara(nome, q)                              # letras (sem argola)
+    q = replace(p, produto="ponteira", ligar_letras=False)
+    m, yc = mascara(nome, q)                              # letras (sem argola e sem pontes entre palavras)
     pad = int((p.borda + 2.0) / res) + 4
     m = np.pad(m, pad)
     yc = yc + pad * res
@@ -1500,3 +1594,485 @@ def tag_occ(nome, p):
     B[:, :, ob.shape[2]:] = ol
     fx = lambda v: np.flip(v, 0).transpose(1, 0, 2)
     return fx(A), fx(B), res
+
+
+# ----------------------------------------------------------------------------- marcador de páginas (clip) com nome e emoji de professor
+# Placa fina (1,4 mm) com a haste do clip (moldura em U + lingueta, como um clip de folha) e, no topo, o nome e o emoji em relevo,
+# em até 4 filamentos: 1 base · 2 letras e boca (branco) · 3 rosto · 4 capelo e óculos.
+MARCADOR = dict(altura=13.0, engrossar=0.6, espaco=-0.8, largura=1.0, raio=0.6, borda=2.4, base_alt=2.2, relevo=1.2, inclinacao=3.0, ondula=0.4)
+PALETAS_MARCADOR_2 = {                                 # 2 filamentos: base, nome + emoji (mesmas cores dos chaveiros de 2 cores)
+    "Menina": ["#B58AE0", "#FFD21F"],                    # base lilás, nome/emblema amarelo
+    "Menino": ["#FFD21F", "#2F6FE4"],                    # base amarela, nome/emblema azul
+}
+PALETAS_MARCADOR = {                                   # filamentos 1..4: base, letras/boca, rosto, capelo/óculos
+    "Menina": ["#B58AE0", "#FFFFFF", "#FFD21F", "#2F6FE4"],   # base lilás, capelo e óculos azuis
+    "Menino": ["#2F6FE4", "#FFFFFF", "#FFD21F", "#B58AE0"],   # base azul, capelo e óculos lilás
+}
+
+
+def _emoji_professor(D, res):
+    """Máscaras 2D (bool) do emoji de professor: rosto, capelo (sem pingente), óculos e boca, em um quadrado de 1,3·D. Retorna dict."""
+    S = int(1.3 * D / res)
+    c = S / 2
+    d = D / res
+
+    def novo():
+        im = Image.new("L", (S, S), 0)
+        return im, ImageDraw.Draw(im)
+
+    face, f = novo()
+    f.ellipse((c - d / 2, c - d / 2, c + d / 2, c + d / 2), fill=255)
+    cap, k = novo()
+    k.polygon([(c - 0.62 * d, c - 0.40 * d), (c, c - 0.58 * d), (c + 0.62 * d, c - 0.40 * d), (c, c - 0.22 * d)], fill=255)   # tábua do capelo
+    k.rounded_rectangle((c - 0.34 * d, c - 0.36 * d, c + 0.34 * d, c - 0.21 * d), radius=0.07 * d, fill=255)                  # calota
+    gl, g = novo()
+    g.rounded_rectangle((c - 0.40 * d, c - 0.10 * d, c - 0.04 * d, c + 0.10 * d), radius=0.06 * d, fill=255)
+    g.rounded_rectangle((c + 0.04 * d, c - 0.10 * d, c + 0.40 * d, c + 0.10 * d), radius=0.06 * d, fill=255)
+    g.rectangle((c - 0.06 * d, c - 0.06 * d, c + 0.06 * d, c - 0.01 * d), fill=255)                                             # ponte
+    mo, o = novo()
+    o.pieslice((c - 0.28 * d, c + 0.17 * d, c + 0.28 * d, c + 0.47 * d), 0, 180, fill=255)                                      # sorriso aberto
+    b = lambda im: np.asarray(im) > 127
+    cap, gl, mo, face = b(cap), b(gl), b(mo), b(face)
+    gl &= ~cap
+    mo &= ~cap & ~gl
+    solo = face & ~cap & ~gl & ~mo
+    return dict(cap=cap, gl=gl, mo=mo, rosto=solo, todo=face | cap)
+
+
+def _livro(D, res):
+    """Máscaras 2D do livrinho aberto: capa (com as linhas de texto) e páginas, em uma tela de 1,25·D por 0,95·D."""
+    Sw, Sh = int(1.25 * D / res), int(0.95 * D / res)
+    def novo():
+        im = Image.new("L", (Sw, Sh), 0)
+        return im, ImageDraw.Draw(im)
+    capa, c1 = novo()
+    c1.rounded_rectangle((0, 0.05 * Sh, Sw - 1, Sh - 1), radius=0.10 * Sh, fill=255)
+    pag, g = novo()
+    g.rounded_rectangle((0.07 * Sw, 0.17 * Sh, 0.485 * Sw, 0.86 * Sh), radius=0.06 * Sh, fill=255)
+    g.rounded_rectangle((0.515 * Sw, 0.17 * Sh, 0.93 * Sw, 0.86 * Sh), radius=0.06 * Sh, fill=255)
+    lin, ln = novo()
+    for y in (0.36, 0.52, 0.68):                                             # linhas de texto nas duas páginas
+        ln.rectangle((0.13 * Sw, y * Sh, 0.42 * Sw, (y + 0.065) * Sh), fill=255)
+        ln.rectangle((0.58 * Sw, y * Sh, 0.87 * Sw, (y + 0.065) * Sh), fill=255)
+    b = lambda im: np.asarray(im) > 127
+    capa, pag, lin = b(capa), b(pag), b(lin)
+    pag &= ~lin
+    capa &= ~pag
+    return dict(capa=capa, pag=pag)
+
+
+def _estadio(img, cx, y0, y1, w):
+    """Desenha (em img PIL 'L') uma haste: retângulo de y0 até uma ponta semicircular que termina em y1."""
+    r = w / 2
+    d = ImageDraw.Draw(img)
+    d.rectangle((cx - r, y0, cx + r, y1 - r), fill=255)
+    d.ellipse((cx - r, y1 - 2 * r, cx + r, y1), fill=255)
+
+
+def _emblema_cepi(D, res):
+    """Releitura do emblema do C.E.P.I. Parque dos Buritis, com formas e texto limpos: (relevo, disco, yc_mm).
+    Disco = base (cor 1). Relevo (cor 2): dois aros, nome da escola e lema escritos no anel entre eles, e no centro o escudo de cantos
+    inferiores arredondados com 'C.E.P.I.', estrelas vazadas na metade esquerda e estrela grande + 1968 na metade direita."""
+    N = int(round(D / res))
+    k = N / D                                               # pixels por mm
+    c = N / 2
+    R = D / 2
+    P = lambda x, y: (c + x * k, c + y * k)
+    S = lambda L: [P(x, y) for x, y in L]
+    fonte = listar_fontes()
+    fpath = fonte.get("Archivo Black") or fonte.get("Arial Rounded MT Bold") or next(iter(fonte.values()))
+    F = lambda mm: ImageFont.truetype(fpath, max(8, int(round(mm * k))))
+
+    def tela():
+        im = Image.new("L", (N, N), 0)
+        return im, ImageDraw.Draw(im)
+
+    disco_im, dd = tela()
+    dd.ellipse((0, 0, N - 1, N - 1), fill=255)
+    rel, dr = tela()
+    ocos, do = tela()                                       # o que é vazado (mostra a base)
+
+    def anel(r_ext, r_int):
+        dr.ellipse((c - r_ext * k, c - r_ext * k, c + r_ext * k, c + r_ext * k), fill=255)
+        dr.ellipse((c - r_int * k, c - r_int * k, c + r_int * k, c + r_int * k), fill=0)
+
+    pequeno = D < 45                                        # emblema pequeno: anel mais estreito e só "PARQUE DOS BURITIS" (o lema não cabe legível)
+    r_borda_ext, r_borda_int = (R - 0.9, R - 2.0) if pequeno else (R - 1.0, R - 2.3)             # aro de fora
+    r_miolo = (R - 6.8) if pequeno else (R - 8.6)           # aro de dentro (o anel de texto fica entre os dois)
+    anel(r_borda_ext, r_borda_int)
+    anel(r_miolo + 1.2, r_miolo)
+    r_txt = (r_borda_int + r_miolo + 1.2) / 2               # linha de centro do texto do anel
+    h_txt = (r_borda_int - r_miolo - 1.2) * (0.80 if pequeno else 0.72)            # tamanho da letra dentro do anel
+    _txt_topo, _txt_baixo = "PARQUE DOS BURITIS", ("" if pequeno else "EDUCAÇÃO · AMOR · CIDADANIA")
+    _f4 = ImageFont.truetype(fpath, max(8, int(round(4.0 * k))))
+    _larg4 = lambda t: (sum(_f4.getlength(ch) / k for ch in t) + 0.16 * 4.0 * (len(t) - 1)) if t else 0.0       # comprimento do texto com letra de 4 mm
+    h_max = np.radians(200 if pequeno else 318) * r_txt / ((_larg4(_txt_topo) + _larg4(_txt_baixo)) / 4.0)           # os dois arcos somam no máximo ~318 graus
+    h_txt = min(h_txt, h_max)
+
+    def sobre_arco(texto, topo, h_mm):
+        """Escreve o texto em arco no anel: topo=True (letras para fora, lendo da esquerda p/ direita) ou embaixo (letras de pé)."""
+        f = F(h_mm)
+        esp = 0.16 * h_mm
+        larg = [f.getlength(ch) / k for ch in texto]
+        total = sum(larg) + esp * (len(texto) - 1)
+        ang0 = -total / r_txt / 2
+        a = ang0
+        for ch, w in zip(texto, larg):
+            ac = a + w / r_txt / 2                          # ângulo do centro da letra (rad, 0 = topo ou fundo)
+            a += (w + esp) / r_txt
+            if ch == " ":
+                continue
+            tmp = Image.new("L", (int(h_mm * k * 3), int(h_mm * k * 3)), 0)
+            ImageDraw.Draw(tmp).text((tmp.width / 2, tmp.height / 2), ch, font=f, fill=255, anchor="mm")
+            graus = np.degrees(ac)
+            tmp = tmp.rotate(-graus if topo else graus, resample=Image.BICUBIC)
+            x = r_txt * np.sin(ac)
+            y = (-r_txt * np.cos(ac)) if topo else (r_txt * np.cos(ac))
+            cx, cy = P(x, y)
+            dr.bitmap((cx - tmp.width / 2, cy - tmp.height / 2), tmp, fill=255)
+
+    sobre_arco(_txt_topo, True, h_txt)
+    if _txt_baixo:
+        sobre_arco(_txt_baixo, False, h_txt)
+
+    esc = 1.08 * min(1.0, r_miolo / 21.4)
+    dy0 = 1.8 * esc                                      # escudo um pouco maior e mais baixo, para ocupar melhor o círculo de dentro
+    Q = lambda x, y: P(x * esc, y * esc + dy0)
+    T = lambda L: [Q(x, y) for x, y in L]
+    # escudo: lados retos e cantos inferiores arredondados, terminando numa ponta suave
+    W2, y_top, y_base = 12.4, -8.6, 1.4
+    def bezier(p0, p1, p2, p3, n=40):
+        t = np.linspace(0, 1, n)[:, None]
+        return ((1 - t) ** 3 * np.array(p0) + 3 * (1 - t) ** 2 * t * np.array(p1) + 3 * (1 - t) * t ** 2 * np.array(p2) + t ** 3 * np.array(p3)).tolist()
+    dir_ = bezier((W2, y_base), (W2, y_base + 7.2), (4.6, y_base + 10.4), (0, y_base + 12.4))
+    esq_ = [(-x, y) for x, y in dir_][::-1]
+    escudo = [(-W2, y_top), (W2, y_top)] + dir_ + esq_
+    # faixa do nome da escola
+    dr.rectangle((*Q(-W2, -16.2), *Q(W2, -9.4)), fill=255)
+    do.text(Q(0, -12.8), "C.E.P.I.", font=F((5.2 if pequeno else 4.9) * esc), fill=255, anchor="mm")
+    # metade esquerda cheia com estrelas vazadas
+    esq_im, de = tela()
+    de.polygon(T(escudo), fill=255)
+    de.rectangle((*Q(-0.25, -30), *Q(40, 40)), fill=0)
+    esq_mask = np.asarray(esq_im) > 127
+    dr.bitmap((0, 0), esq_im, fill=255)
+    for ex, ey in ((-9.2, -5.4), (-5.6, -5.4), (-2.4, -5.4), (-9.2, -1.9), (-5.6, -1.9), (-2.4, -1.9), (-9.2, 1.6), (-5.6, 1.6), (-2.4, 1.6),
+                   (-7.4, 5.1), (-3.8, 5.1), (-3.2, 8.6)):
+        pts = []
+        for q in range(10):
+            rr = 1.4 if q % 2 == 0 else 0.6
+            ang = -np.pi / 2 + q * np.pi / 5
+            pts.append((ex + rr * np.cos(ang), ey + rr * np.sin(ang)))
+        box = Image.new("L", (N, N), 0)
+        ImageDraw.Draw(box).polygon(T(pts), fill=255)
+        bm = np.asarray(box) > 127
+        if (bm & esq_mask).sum() >= 0.97 * bm.sum():         # só desenha a estrela que cabe inteira dentro do escudo
+            do.polygon(T(pts), fill=255)
+    # metade direita: contorno + estrela grande + 1968
+    dr.line(T(escudo + [escudo[0]]), fill=255, width=int(0.9 * k), joint="curve")
+    dr.line(T([(0.25, y_top), (0.25, y_base + 12.0)]), fill=255, width=int(0.8 * k))
+    pts = []
+    for q in range(10):
+        rr = 5.4 if q % 2 == 0 else 2.2
+        ang = -np.pi / 2 + q * np.pi / 5
+        pts.append((6.7 + rr * np.cos(ang), -2.7 + rr * np.sin(ang)))
+    dr.polygon(T(pts), fill=255)
+    dr.text(Q(6.4, 5.4), "1968", font=F((4.3 if pequeno else 3.3) * esc), fill=255, anchor="mm")
+    relf = (np.asarray(rel) > 127) & ~(np.asarray(ocos) > 127)
+    disc = np.asarray(disco_im) > 127
+    relf = ndi.binary_opening(relf, iterations=max(1, int(round(0.15 / res)))) & disc
+    return relf, disc, N * res / 2
+
+
+def _emblema_masks(caminho, D, res):
+    """Emblema redondo a partir de uma imagem: (relevo, disco, yc_mm). O disco é a base (cor 1); o relevo são as partes claras (cor 2).
+    Linhas mais finas que ~0,5 mm somem (não imprimem), então o emblema fica simplificado."""
+    if caminho == "cepi":
+        return _emblema_cepi(D, res)
+    im = Image.open(caminho).convert("RGB")
+    a = np.asarray(im).astype(float)
+    lum = a.mean(2)
+    lab, _ = ndi.label(~(a.min(2) > 235))
+    disc = ndi.binary_fill_holes(lab == lab[a.shape[0] // 2, a.shape[1] // 2])
+    ys, xs = np.where(disc)
+    y0, y1, x0, x1 = ys.min(), ys.max() + 1, xs.min(), xs.max() + 1
+    lado = max(y1 - y0, x1 - x0)
+    cy, cx = (y0 + y1) // 2, (x0 + x1) // 2
+    r0, c0 = max(0, cy - lado // 2), max(0, cx - lado // 2)
+    sl = (slice(r0, r0 + lado), slice(c0, c0 + lado))
+    N = int(round(D / res))
+    redim = lambda arr: np.asarray(Image.fromarray((arr * 255).astype(np.uint8)).resize((N, N), Image.LANCZOS)) > 127
+    disco = redim(disc[sl])
+    rel = redim(((lum > 225) & disc)[sl]) & disco
+    k = max(1, int(round(0.25 / res)))
+    rel = ndi.binary_opening(rel, iterations=k)             # tira linhas finas demais
+    rel = ndi.binary_closing(rel, iterations=k)             # fecha riscos finos dentro das áreas claras
+    rel &= ndi.binary_erosion(disco, iterations=int(round(1.0 / res)))
+    return rel, disco, N * res / 2
+
+
+def _marcador_singelo(p):
+    """Marcador singelo do C.E.P.I.: cabeça com a logo (largura p.marc_cab; a base acompanha o formato da logo) e, embaixo, o clip
+    (largura p.marc_larg, comprimento p.marc_clip: moldura em U com lingueta). Comprimento total = p.marc_comp. 2 filamentos: [base, relevo]."""
+    res = p.voxel
+    k = 1.0 / res
+    Wd, Wh, Ln = p.marc_larg, p.marc_cab, p.marc_comp
+    pad = int(2.0 * k)
+    Wpx, Hpx = int(max(Wd, Wh) * k) + 2 * pad, int(Ln * k) + 2 * pad
+    cx = Wpx / 2
+    P = lambda x, y: (cx + x * k, pad + y * k)
+    S = lambda L: [P(x, y) for x, y in L]
+    fonte = listar_fontes()
+    fpath = fonte.get("Archivo Black") or fonte.get("Arial Rounded MT Bold") or next(iter(fonte.values()))
+
+    def ajustar(txt, larg_mm, tam_max):
+        f4 = ImageFont.truetype(fpath, int(4.0 * k))
+        w4 = f4.getlength(txt) / k
+        return ImageFont.truetype(fpath, max(8, int(round(min(tam_max, 4.0 * larg_mm / w4) * k))))
+
+    def tela():
+        im = Image.new("L", (Wpx, Hpx), 0)
+        return im, ImageDraw.Draw(im)
+
+    marg = 1.1                                               # borda de base em volta da logo
+    hr = Wh / 2 - marg                                       # meia largura do conteúdo da logo
+    rel, dr = tela()
+    ocos, do = tela()
+    y0 = marg
+    # faixa C.E.P.I. (relevo com letras vazadas)
+    h_band = 5.2
+    dr.rectangle((*P(-hr, y0), *P(hr, y0 + h_band)), fill=255)
+    f = ajustar("C.E.P.I.", 2 * hr - 3.6, 6.4)
+    do.text(P(0, y0 + h_band / 2 + 0.1), "C.E.P.I.", font=f, fill=255, anchor="mm")
+    # PQ BURITIS em relevo
+    y_pq = y0 + h_band + 2.3
+    f = ajustar("PQ BURITIS", 2 * hr - 0.8, 3.6)
+    dr.text(P(0, y_pq), "PQ BURITIS", font=f, fill=255, anchor="mm")
+    # escudo (cantos de baixo arredondados) com estrelas
+    y_t = y_pq + 2.2
+    y_b = p.marc_cab_alt - marg
+    hh = y_b - y_t
+    xs_ = hr
+    fe = 1.4 if hh >= 0.9 * xs_ else 1.0                     # escudo alto (proporção da logo): estrelas maiores
+    sc = min(xs_, 1.05 * hh) * fe                                 # escala das estrelas: o escudo é largo e baixo, elas acompanham a altura
+    def bez(p0, p1, p2, p3, n=40):
+        t = np.linspace(0, 1, n)[:, None]
+        return ((1 - t) ** 3 * np.array(p0) + 3 * (1 - t) ** 2 * t * np.array(p1) + 3 * (1 - t) * t ** 2 * np.array(p2) + t ** 3 * np.array(p3)).tolist()
+    dire = bez((xs_, y_t + 0.40 * hh), (xs_, y_t + 0.76 * hh), (0.40 * xs_, y_t + 0.92 * hh), (0, y_b))
+    esq = [(-x, y) for x, y in dire][::-1]
+    escudo = [(-xs_, y_t), (xs_, y_t)] + dire + esq
+    esq_im, de = tela()
+    de.polygon(S(escudo), fill=255)
+    de.rectangle((*P(-0.2, -5), *P(60, 90)), fill=0)
+    esq_mask = np.asarray(esq_im) > 127
+    dr.bitmap((0, 0), esq_im, fill=255)
+    for ex, ey in ((-0.69 * xs_, y_t + 0.24 * hh), (-0.31 * xs_, y_t + 0.24 * hh), (-0.69 * xs_, y_t + 0.52 * hh), (-0.31 * xs_, y_t + 0.52 * hh),
+                   (-0.50 * xs_, y_t + 0.76 * hh)):
+        pts = []
+        for q in range(10):
+            rr = 0.100 * sc if q % 2 == 0 else 0.042 * sc
+            ang = -np.pi / 2 + q * np.pi / 5
+            pts.append((ex + rr * np.cos(ang), ey + rr * np.sin(ang)))
+        box = Image.new("L", (Wpx, Hpx), 0)
+        ImageDraw.Draw(box).polygon(S(pts), fill=255)
+        bm = np.asarray(box) > 127
+        if (bm & esq_mask).sum() >= 0.97 * bm.sum():
+            do.polygon(S(pts), fill=255)
+    dr.line(S(escudo + [escudo[0]]), fill=255, width=int(0.7 * k), joint="curve")
+    dr.line(S([(0.2, y_t), (0.2, y_b)]), fill=255, width=int(0.6 * k))
+    pts = []
+    for q in range(10):
+        rr = 0.30 * sc if q % 2 == 0 else 0.125 * sc
+        ang = -np.pi / 2 + q * np.pi / 5
+        pts.append((0.50 * xs_ + rr * np.cos(ang), y_t + 0.50 * hh + rr * np.sin(ang)))
+    dr.polygon(S(pts), fill=255)
+    relf_pre = (np.asarray(rel) > 127) & ~(np.asarray(ocos) > 127)
+
+    # base da cabeça: o formato da própria logo, com uma borda em volta
+    logo = np.asarray(rel) > 127
+    cab = ndi.distance_transform_edt(~logo) <= marg * k
+    cab = ndi.binary_fill_holes(cab)
+    cab = ndi.gaussian_filter(cab.astype(float), 0.3 * k) > 0.5
+
+    # clip: tira de largura Wd, de baixo até um pouco dentro da cabeça; moldura em U com lingueta
+    y_c = y_t + 0.55 * hh
+    clip_im, dc = tela()
+    r = Wd / 2
+    dc.rectangle((*P(-r, y_c), *P(r, Ln - r)), fill=255)
+    dc.ellipse((*P(-r, Ln - 2 * r), *P(r, Ln)), fill=255)
+
+    def estadio(w, ytop, ybot):
+        im, d = tela()
+        rr = w / 2
+        d.rectangle((*P(-rr, ytop), *P(rr, ybot - rr)), fill=255)
+        d.ellipse((*P(-rr, ybot - 2 * rr), *P(rr, ybot)), fill=255)
+        return np.asarray(im) > 127
+
+    y_f = Ln - p.marc_clip + 1.5                             # a fenda começa logo abaixo da ponta do escudo
+    Wi = Wd - 2 * p.marc_braco
+    Wt = Wi - 2 * p.marc_fenda
+    anel = estadio(Wi, y_f, Ln - p.marc_braco)
+    ling = estadio(Wt, y_f, Ln - p.marc_braco - p.marc_fenda)
+    base2d = (cab | (np.asarray(clip_im) > 127)) & ~(anel & ~ling)
+    relf = relf_pre & base2d
+    relf = ndi.binary_opening(relf, iterations=max(1, int(round(0.12 / res))))
+    # volumes
+    nzb = max(2, int(round(p.base_alt / res)))
+    nzr = max(2, int(round(p.relevo / res)))
+    zb = (np.arange(nzb) + 0.5) * res
+    zr = (np.arange(nzr) + 0.5) * res
+    db_ = ndi.distance_transform_edt(base2d) * res
+    gb = _perfil(zb, p.base_alt, min(p.raio, p.base_alt * 0.45), p)
+    obase = (db_[:, :, None] >= np.maximum(gb, res * 0.5)[None, None, :]) & base2d[:, :, None]
+    di = ndi.distance_transform_edt(relf) * res
+    gi = _perfil(zr, p.relevo, min(p.raio, p.relevo * 0.6), p)
+    oin = (di[:, :, None] >= np.maximum(gi, res * 0.5)[None, None, :]) & relf[:, :, None]
+    nz = nzb + nzr
+
+    def vol(base=None, inlay=None):
+        A = np.zeros(base2d.shape + (nz,), bool)
+        if base is not None:
+            A[:, :, :nzb] = base
+        if inlay is not None:
+            A[:, :, nzb:] = inlay
+        return np.flip(A, 0).transpose(1, 0, 2)
+
+    return [vol(base=obase), vol(inlay=oin)], res
+
+
+def marcador_occ(nome, p):
+    """Volumes do marcador de páginas: ([base, letras+boca, rosto, capelo+óculos], res), cada um bool (x, y, z) no mesmo referencial."""
+    res = p.voxel
+    if p.emblema == "cepi_slim":
+        return _marcador_singelo(p)
+    q = replace(p, produto="ponteira")
+    disco = None
+    if p.emblema:
+        m, disco, yc = _emblema_masks(p.emblema, p.emblema_d, res)
+    else:
+        m, yc = mascara(nome, q)
+    lh, lw = m.shape
+    em = _emoji_professor(p.emoji_d, res) if (p.emoji and not p.emblema) else None
+    lv = _livro(p.emoji_d, res) if (p.livro_pos != "nenhum" and not p.emblema) else None
+    ctr_l = lh - yc / res                                  # linha do meio das maiúsculas
+    gap = int(1.5 / res)
+    esq, dir_ = [], []                                     # itens antes e depois do nome: (máscaras, largura, altura, chaves)
+    if em:
+        esq.append((em, em["todo"].shape[1], em["todo"].shape[0], ("cap", "gl", "mo", "rosto")))
+    if lv and p.livro_pos in ("inicio", "ambos"):
+        esq.append((lv, lv["capa"].shape[1], lv["capa"].shape[0], ("pag", "capa")))
+    if lv and p.livro_pos in ("fim", "ambos"):
+        dir_.append((lv, lv["capa"].shape[1], lv["capa"].shape[0], ("pag", "capa")))
+    # posições (x relativo ao início da peça, linha de cima relativa à linha 0 do nome)
+    pos, x = [], 0
+    for it in esq:
+        pos.append((it, x, int(round(ctr_l - it[2] / 2))))
+        x += it[1] + gap
+    x_nome = x
+    x = x_nome + lw + (gap if dir_ else 0)
+    for it in dir_:
+        pos.append((it, x, int(round(ctr_l - it[2] / 2))))
+        x += it[1] + gap
+    W0 = x - (gap if dir_ else 0) if dir_ else x_nome + lw
+    tops = [0] + [y for _, _, y in pos]
+    base_y = -min(tops)
+    H0 = max([lh + base_y] + [y + it[2] + base_y for it, _, y in pos])
+    pad = int((p.borda + 2.0) / res) + 4
+
+    def tela():
+        return np.zeros((H0 + 2 * pad, W0 + 2 * pad), bool)
+
+    L = tela()
+    L[pad + base_y:pad + base_y + lh, pad + x_nome:pad + x_nome + lw] = m
+    parts = {k: tela() for k in ("cap", "gl", "mo", "rosto", "pag", "capa")}
+    for it, xx, yy in pos:
+        mk, w, h, chaves = it
+        for k in chaves:
+            parts[k][pad + yy + base_y:pad + yy + base_y + h, pad + xx:pad + xx + w] |= mk[k]
+    U = L.copy()
+    for v in parts.values():
+        U |= v
+    blk = ndi.distance_transform_edt(~U) <= p.borda / res
+    blk = ndi.binary_fill_holes(blk)
+    blk = ndi.gaussian_filter(blk.astype(float), 0.4 / res) > 0.5
+    if disco is not None:                                  # emblema: o bloco é o próprio disco
+        blk = tela()
+        blk[pad + base_y:pad + base_y + lh, pad + x_nome:pad + x_nome + lw] = disco
+    ys, xs = np.where(blk)
+    cxs = (xs.min() + xs.max()) / 2
+    yb = ys.max()
+    sobre = int(4.0 / res)
+    ext = int((p.marc_comp + 2) / res)
+    nrows = blk.shape[0] + ext
+
+    def estende(a):
+        return np.pad(a, ((0, nrows - a.shape[0]), (0, 0)))
+
+    blk, L = estende(blk), estende(L)
+    parts = {k: estende(v) for k, v in parts.items()}
+    Wo = p.marc_larg / res
+    # a haste começa por baixo da parte mais ALTA da borda do bloco dentro da largura da haste (o nome tem letras que sobem e descem;
+    # se partisse do ponto mais baixo, só a letra que desce encostaria na haste e a peça ficaria solta)
+    c0h, c1h = max(0, int(cxs - Wo / 2)), min(blk.shape[1], int(cxs + Wo / 2) + 1)
+    fundo = [np.where(blk[:, c])[0].max() for c in range(c0h, c1h) if blk[:, c].any()]
+    yb_h = min(fundo) if fundo else yb
+    y0, y1 = yb_h - sobre, yb_h - sobre + int(p.marc_comp / res)
+    Wi = Wo - 2 * p.marc_braco / res
+    Wt = Wo - 2 * (p.marc_braco + p.marc_fenda) / res
+
+    def haste(w, ytop, ybot):
+        im = Image.new("L", (blk.shape[1], blk.shape[0]), 0)
+        _estadio(im, cxs, ytop, ybot, w)
+        return np.asarray(im) > 127
+
+    outer = haste(Wo, y0, y1)
+    ring = haste(Wi, y0, y1 - p.marc_braco / res)
+    tong = haste(Wt, y0, y1 - (p.marc_braco + p.marc_fenda) / res)
+    stem = outer & ~(ring & ~tong)
+    base2d = blk | stem
+    ys, xs = np.where(base2d)
+    r0, r1, c0, c1 = ys.min() - 2, ys.max() + 3, xs.min() - 2, xs.max() + 3
+    r0, c0 = max(r0, 0), max(c0, 0)
+    cut = lambda a: a[r0:r1, c0:c1]
+    base2d, L = cut(base2d), cut(L)
+    parts = {k: cut(v) for k, v in parts.items()}
+    nzb = max(2, int(round(p.base_alt / res)))
+    nzr = max(2, int(round(p.relevo / res)))
+    zb = (np.arange(nzb) + 0.5) * res
+    zr = (np.arange(nzr) + 0.5) * res
+    db = ndi.distance_transform_edt(base2d) * res
+    gb = _perfil(zb, p.base_alt, min(p.raio, p.base_alt * 0.45), p)
+    obase = (db[:, :, None] >= np.maximum(gb, res * 0.5)[None, None, :]) & base2d[:, :, None]
+    inl = L.copy()
+    for v in parts.values():
+        inl |= v
+    if p.marc_cores == 2:
+        fio = ndi.distance_transform_edt(~parts["cap"]) <= 0.45 / res          # fio fino de base entre o capelo e o rosto
+        tinta = L | parts["cap"] | parts["capa"] | parts["pag"] | (parts["rosto"] & ~fio)
+        inl = tinta
+    di = ndi.distance_transform_edt(inl) * res
+    gi = _perfil(zr, p.relevo, min(p.raio, p.relevo * 0.6), p)
+    oin = (di[:, :, None] >= np.maximum(gi, res * 0.5)[None, None, :]) & inl[:, :, None]
+    nz = nzb + nzr
+
+    def vol(base=None, inlay=None):
+        A = np.zeros(base2d.shape + (nz,), bool)
+        if base is not None:
+            A[:, :, :nzb] = base
+        if inlay is not None:
+            A[:, :, nzb:] = inlay
+        return np.flip(A, 0).transpose(1, 0, 2)
+
+    p1 = vol(base=obase)
+    if p.marc_cores == 2:
+        return [p1, vol(inlay=oin)], res
+    p2 = vol(inlay=oin & (L | parts["mo"] | parts["pag"])[:, :, None])
+    p3 = vol(inlay=oin & parts["rosto"][:, :, None])
+    p4 = vol(inlay=oin & (parts["cap"] | parts["gl"] | parts["capa"])[:, :, None])
+    return [p1, p2, p3, p4], res
+
+
+# marcador de páginas singelo com o emblema do C.E.P.I. (aprovado): cabeça 28 x 36 mm na proporção da logo + clip de 20 x 45 mm, base de 1 mm
+MARCADOR_CEPI = dict(produto="marcador", emblema="cepi_slim", marc_larg=20.0, marc_cab=28.0, marc_cab_alt=36.0, marc_braco=3.4, marc_fenda=1.6,
+                     marc_clip=45.0, voxel=0.05, marc_cores=2, emoji=False, livro_pos="nenhum", marc_comp=81.0,
+                     **{**MARCADOR, "raio": 0.4, "base_alt": 1.0, "relevo": 0.6})
